@@ -1,0 +1,23 @@
+{
+  "name": "bakari-builder",
+  "version": "0.0.1",
+  "description": "bakari builder",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/EarlyH/bakari-builder"
+  },
+  "keywords": [
+    "bakari",
+    "builder"
+  ],
+  "author": "early",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/EarlyH/bakari-builder/issues"
+  },
+  "homepage": "https://github.com/EarlyH/bakari-builder"
+}
