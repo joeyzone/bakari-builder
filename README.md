@@ -1,13 +1,13 @@
 bakari-builder
 ==============
 
-##安装
+##Install
 
 通过npm安装bakari-builder。
 
 	npm install －g bakari-builder
 
-##使用
+##Usage
 
 执行命令，初始化一个项目：
 

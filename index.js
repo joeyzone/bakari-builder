@@ -256,10 +256,12 @@ var lib = {
 
 	// 卸载所有的包
 	uninstallAll : function( cfg ){
-		
-	}
+		// TODO
+	},
 
 };
+
+var cli = {};
 
 // ==================================================
 // loading project
@@ -283,284 +285,326 @@ grunt.file.recurse( shell.pwd() + builder.libConfig, function(abspath, rootdir, 
 // ==================================================
 // command
 // ==================================================
-// init
-program
-	.command('init')
-	.description('init project')
-	.action(function(){
+// init @early
+cli.init = function(){
+		
+	var promise = Promise();
+	promise.done(function(){
+		helper.saveProjectConfig();
+		helper.log('initialization complete', '');
+	});
 
-		var promise = Promise();
-		promise.done(function(){
-			helper.saveProjectConfig();
-			helper.log('initialization complete', '');
-		});
-
-		inquirer.prompt([
-			{
-				name : 'rootPath',
-				type : 'input',
-				message : 'project root path:',
-				default : shell.pwd()
-			},
-			{
-				name : 'projectName',
-				type : 'input',
-				message : 'project name:',
-				default : project.name
-			},
-			{
-				name : 'initJs',
-				type : 'confirm',
-				message : 'init javascript?',
-				default : (project.initJs === null ) ? true : project.initJs
-			},
-			{
-				name : 'jsPath',
-				type : 'input',
-				message : 'javascript path:',
-				default : builder.jsPath,
-				when : function(answers){
-					return answers.initJs;
-				}
-			},
-			{
-				name : 'libs',
-				type : 'checkbox',
-				message : 'use lib:',
-				choices : [
-					'jquery',
-					'underscore',
-					'js-md5',
-					'json3',
-					'moment',
-					'js-base64',
-					'jquery.cookie'
-				],
-				when : function(answers){
-					return answers.jsPath;
-				}
+	inquirer.prompt([
+		{
+			name : 'rootPath',
+			type : 'input',
+			message : 'project root path:',
+			default : shell.pwd()
+		},
+		{
+			name : 'projectName',
+			type : 'input',
+			message : 'project name:',
+			default : project.name
+		},
+		{
+			name : 'initJs',
+			type : 'confirm',
+			message : 'init javascript?',
+			default : (project.initJs === null ) ? true : project.initJs
+		},
+		{
+			name : 'jsPath',
+			type : 'input',
+			message : 'javascript path:',
+			default : builder.jsPath,
+			when : function(answers){
+				return answers.initJs;
 			}
-			// {
-			// 	name : 'initJavascript',
-			// 	type : 'confirm',
-			// 	message : 'init javascript?',
-			// 	default : (buildConfig.initJs === null ) ? true : buildConfig.initJs
-			// },
-			// 
-		], function( answers ) {
-
-			// get project root path
-			project.rootPath = answers.rootPath;
-
-			// make dir
-			grunt.file.mkdir( project.rootPath+builder.builderPath );
-
-			// make lib config dir
-			grunt.file.mkdir( project.rootPath+builder.libConfig );
-
-			// get project name
-			project.name = answers.projectName;
-
-			// set project js path
-			project.jsPath = answers.jsPath || builder.jsPath;
-
-			// set init js
-			project.initJs = answers.initJs;
-
-			// make js dir
-			if ( answers.initJs && answers.jsPath ) {
-				_.each( builder.jsDir, function(v){
-					grunt.file.mkdir( project.rootPath+project.jsPath+v );
-				});
+		},
+		{
+			name : 'libs',
+			type : 'checkbox',
+			message : 'use lib:',
+			choices : [
+				'jquery',
+				'underscore',
+				'js-md5',
+				'json3',
+				'moment',
+				'js-base64',
+				'jquery.cookie'
+			],
+			when : function(answers){
+				return answers.jsPath;
 			}
+		}
+		// {
+		// 	name : 'initJavascript',
+		// 	type : 'confirm',
+		// 	message : 'init javascript?',
+		// 	default : (buildConfig.initJs === null ) ? true : buildConfig.initJs
+		// },
+		// 
+	], function( answers ) {
 
-			// make bowerrc & libs
-			if ( answers.libs && answers.libs.length > 0 ) {
+		// get project root path
+		project.rootPath = answers.rootPath;
 
-				bowerrc.directory = '.' + project.jsPath + builder.jsDir.lib;
-				grunt.file.write( project.rootPath+builder.bowerrcPath, JSON.stringify(bowerrc) );
-				resetBowerConfig();
+		// make dir
+		grunt.file.mkdir( project.rootPath+builder.builderPath );
 
+		// make lib config dir
+		grunt.file.mkdir( project.rootPath+builder.libConfig );
+
+		// get project name
+		project.name = answers.projectName;
+
+		// set project js path
+		project.jsPath = answers.jsPath || builder.jsPath;
+
+		// set init js
+		project.initJs = answers.initJs;
+
+		// make js dir
+		if ( answers.initJs && answers.jsPath ) {
+			_.each( builder.jsDir, function(v){
+				grunt.file.mkdir( project.rootPath+project.jsPath+v );
+			});
+		}
+
+		// make bowerrc & libs
+		if ( answers.libs && answers.libs.length > 0 ) {
+
+			bowerrc.directory = '.' + project.jsPath + builder.jsDir.lib;
+			grunt.file.write( project.rootPath+builder.bowerrcPath, JSON.stringify(bowerrc) );
+			resetBowerConfig();
+
+			lib
+			.search( answers.libs )
+			.done(function(data){
 				lib
-				.search( answers.libs )
-				.done(function(data){
-					lib
-					.install(data)
-					.done(function(){
-						promise.resolve();
-					});
+				.install(data)
+				.done(function(){
+					promise.resolve();
 				});
+			});
 
-			} else {
-				promise.resolve();
-			}
-
-		});
+		} else {
+			promise.resolve();
+		}
 
 	});
 
-// clean
+	return promise;
+
+};
+program
+	.command('init')
+	.description('init project')
+	.action(cli.init);
+
+// clean @early
+cli.clean = function(){
+	
+	var promise = Promise();
+	promise.done(function(){
+		helper.log('cleared project');
+	});
+	
+	// reset bowerrc
+	bowerrc.directory = '.' + project.jsPath + builder.jsDir.lib;
+	grunt.file.write( project.rootPath+builder.bowerrcPath, JSON.stringify(bowerrc) );
+	resetBowerConfig();
+	helper.log('cleared', '.bowerrc');
+
+	// reset libs
+	cli.cleanlib()
+	.done(function(){
+		promise.resolve();
+	});
+
+	return promise;
+
+};
 program
 	.command('clean')
 	.description('clean project')
-	.action(function(){
+	.action(cli.clean);
 
-		var promise = Promise();
-		promise.done(function(){
-			helper.log('cleared project');
-		});
-		
-		// reset bowerrc
-		bowerrc.directory = '.' + project.jsPath + builder.jsDir.lib;
-		grunt.file.write( project.rootPath+builder.bowerrcPath, JSON.stringify(bowerrc) );
-		resetBowerConfig();
-		helper.log('cleared', '.bowerrc');
+// test @early
+cli.test = function(){
+	helper.log('run builder');
+};
+program
+	.command('test')
+	.description('just test builder')
+	.action(cli.test); 
 
-		// reset libs
-		var jsLibPath = project.rootPath + project.jsPath + builder.jsDir.lib;
-		if ( grunt.file.exists( jsLibPath ) )
-		grunt.file.delete( jsLibPath );
+// addlib @early
+cli.addlib = function(name){
+	
+	// check name
+	if ( typeof name !== 'string' ) {
+		helper.log('error', 'you must input a package name');
+		return;
+	}
+
+	var version, promise = Promise();
+
+	if ( arguments[1].parent.useVersion ) {
+		version = arguments[1].parent.useVersion
+	}
+
+	if ( version ) {
+
+		var data = {};
+		data[name] = {};
+		data[name][version] = {
+			dir : name + '-' + version,
+			pkg : name,
+			version : version
+		};
 
 		lib
-		.install(project.libs, {
-			showGet : false,
-			note : 'cleared'
+		.install(data)
+		.done(function(){
+			promise.resolve();
 		})
+
+	} else {
+
+		lib
+		.search([name])
+		.done(function(data){
+			lib
+			.install(data)
+			.done(function(){
+				promise.resolve();
+			})
+		});
+
+	}
+
+	return promise;
+
+};
+program
+	.command('addlib')
+	.description('add a package for project')
+	.action(cli.addlib); 
+
+// rmlib @early
+cli.rmlib = function(name){
+
+	// check name
+	if ( typeof name !== 'string' ) {
+		helper.log('error', 'you must input a package name');
+		return;
+	}
+
+	var version, promise = Promise();
+
+	if ( arguments[1].parent.useVersion ) {
+		version = arguments[1].parent.useVersion
+	}
+
+	if ( version ) {
+
+		var data = {};
+		data[name] = {};
+		data[name][version] = {
+			dir : name + '-' + version,
+			pkg : name,
+			version : version
+		};
+		lib.uninstall(data)
 		.done(function(){
 			promise.resolve();
 		});
 
-	});
+	} else {
 
-// test
-program
-	.command('test')
-	.description('just test builder')
-	.action(function(){
-		helper.log('run builder');
-	}); 
+		var data = {};
+		data[name] = project.libs[name];
 
-// addlib
-program
-	.command('addlib')
-	.description('add a package for project')
-	.action(function( name ){
-
-		// check name
-		if ( typeof name !== 'string' ) {
-			helper.log('error', 'you must input a package name');
+		if ( data[name] === undefined ) {
+			helper.log('error', 'project not install '+name+'.');
 			return;
 		}
 
-		var version;
+		lib.uninstall(data)
+		.done(function(){
+			promise.resolve();
+		});
 
-		if ( arguments[1].parent.useVersion ) {
-			version = arguments[1].parent.useVersion
-		}
+	}
 
-		if ( version ) {
+	return promise;
 
-			var data = {};
-			data[name] = {};
-			data[name][version] = {
-				dir : name + '-' + version,
-				pkg : name,
-				version : version
-			};
-
-			lib
-			.install(data);
-
-		} else {
-
-			lib
-			.search([name])
-			.done(function(data){
-				lib
-				.install(data);
-			});
-
-		}
-
-	}); 
-
-// rmlib
+};
 program
 	.command('rmlib')
 	.description('remove a package from project')
-	.action(function( name ){
+	.action(cli.rmlib);
 
-		// check name
-		if ( typeof name !== 'string' ) {
-			helper.log('error', 'you must input a package name');
-			return;
-		}
+// cleanlib @early
+cli.cleanlib = function(){
 
-		var version;
+	var promise = Promise();
 
-		if ( arguments[1].parent.useVersion ) {
-			version = arguments[1].parent.useVersion
-		}
+	// reset libs
+	var jsLibPath = project.rootPath + project.jsPath + builder.jsDir.lib;
+	if ( grunt.file.exists( jsLibPath ) )
+	grunt.file.delete( jsLibPath );
 
-		if ( version ) {
-
-			var data = {};
-			data[name] = {};
-			data[name][version] = {
-				dir : name + '-' + version,
-				pkg : name,
-				version : version
-			};
-			lib.uninstall(data);
-
-		} else {
-
-			var data = {};
-			data[name] = project.libs[name];
-
-			if ( data[name] === undefined ) {
-				helper.log('error', 'project not install '+name+'.');
-				return;
-			}
-
-			lib.uninstall(data);
-
-		}
-
+	lib
+	.install(project.libs, {
+		showGet : false,
+		note : 'cleared'
+	})
+	.done(function(){
+		promise.resolve();
 	});
 
-// cleanlib
+	return promise;
+
+};
 program
 	.command('cleanlib')
 	.description('clean libs')
-	.action(function(){
-		// TODO
+	.action(cli.cleanlib);
+
+// liblist @early
+cli.liblist = function(){
+
+	var promise = Promise();
+
+	console.log('project ' + chalk.cyan( project.name ) + '\t' + project.rootPath + project.jsPath + builder.jsDir.lib );
+
+	var libs = [];
+	_.each( project.libs, function(lv){
+		_.each( lv, function(v,k){
+			libs.push(v.pkg + '@' + v.version);
+		});
 	});
 
-// liblist
+	_.each( libs, function(v,k){
+		if ( (k+1) === libs.length ) {
+			console.log( '└──' + v );	
+		} else {
+			console.log( '├──' + v );	
+		}
+	});
+
+	promise.resolve();
+	return promise;
+
+};
 program
 	.command('liblist')
 	.description('package info')
-	.action(function(){
-
-		console.log('project ' + chalk.cyan( project.name ) + '\t' + project.rootPath + project.jsPath + builder.jsDir.lib );
-
-		var libs = [];
-		_.each( project.libs, function(lv){
-			_.each( lv, function(v,k){
-				libs.push(v.pkg + '@' + v.version);
-			});
-		});
-
-		_.each( libs, function(v,k){
-			if ( (k+1) === libs.length ) {
-				console.log( '└──' + v );	
-			} else {
-				console.log( '├──' + v );	
-			}
-		});
-
-	});
+	.action(cli.liblist);
 
 // ==================================================
 // option
