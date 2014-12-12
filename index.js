@@ -69,7 +69,7 @@ var project = {
 	// 配置最后更新
 	lastupdate : null,
 
-	// lib信息
+	// lib信息 @notsave
 	libs : {}
 
 };
@@ -92,7 +92,8 @@ var helper = {
 
 	// 保存项目配置
 	saveProjectConfig : function(){
-		project.lastUpdate = moment().format('YYYY-MM-DD HH:mm:ss');
+		delete project.libs;
+		project.lastupdate = moment().format('YYYY-MM-DD HH:mm:ss');
 		grunt.file.write( project.rootPath+builder.projectConfig, JSON.stringify( project ) );
 	}
 
@@ -150,10 +151,12 @@ var lib = {
 		}, cfg);
 
 		var promise = Promise(),
-			num = _.size(libs);
+			num = 0;
 
 		_.each(libs, function(lv){
 			_.each(lv, function(v,k){
+
+				num++;
 			
 				var installName = v.dir+'='+v.pkg+'#'+v.version;
 
@@ -168,7 +171,7 @@ var lib = {
 
 					_.find(installed, function(){
 
-						helper.log( cfg.note, v.pkg + '#' + v.version );
+						helper.log( cfg.note, v.pkg + '@' + v.version );
 
 						// set config
 						grunt.file.mkdir(project.rootPath + builder.libConfig + '/' + v.pkg);
@@ -196,6 +199,59 @@ var lib = {
 	// 卸载包
 	uninstall : function( libs, cfg ){
 		
+		cfg = extend(true, {
+			note : 'uninstalled'
+		}, cfg);
+
+		var promise = Promise(),
+			num = 0;
+
+		_.each(libs, function(lv){
+			_.each(lv, function(v,k){
+
+				num++;
+
+				bower.commands
+				.uninstall([v.dir], { save: true }, {})
+				.on('end', function(uninstall){
+
+					// set config
+					var libConfig = project.rootPath + builder.libConfig + '/' + v.pkg + '/' + v.version + '.json',
+						libDir = project.rootPath + builder.libConfig + '/' + v.pkg,
+						libNum = 0;
+
+					if ( grunt.file.exists(libDir) ) {
+
+						if ( grunt.file.exists(libConfig) ) {
+							grunt.file.delete(libConfig);
+							helper.log( cfg.note, v.pkg + '@' + v.version );
+						} else {
+							helper.log( 'error', 'project not install ' + v.pkg + '@' + v.version );
+						}
+
+						grunt.file.recurse( libDir, function(abspath, rootdir, subdir, filename){
+							libNum++;
+						});
+
+						if ( libNum === 0 ) {
+							grunt.file.delete(libDir);
+						}
+
+					} else {
+						helper.log( 'error', 'project not install ' + v.pkg );
+					}
+
+				})
+				.on('error', function(error){
+					helper.log('error', v.pkg + '#' + v.version + ' : ' + error.details);
+				});
+
+
+			});
+		});
+
+		return promise;
+
 	},
 
 	// 卸载所有的包
@@ -220,7 +276,7 @@ grunt.file.recurse( shell.pwd() + builder.libConfig, function(abspath, rootdir, 
 		project.libs[subdir] = {};
 	}
 
-	project.libs[subdir][filename] = grunt.file.readJSON( abspath );
+	project.libs[subdir][filename.replace(/\.json$/,'')] = grunt.file.readJSON( abspath );
 	
 });
 
@@ -384,11 +440,132 @@ program
 		helper.log('run builder');
 	}); 
 
+// addlib
+program
+	.command('addlib')
+	.description('add a package for project')
+	.action(function( name ){
+
+		// check name
+		if ( typeof name !== 'string' ) {
+			helper.log('error', 'you must input a package name');
+			return;
+		}
+
+		var version;
+
+		if ( arguments[1].parent.useVersion ) {
+			version = arguments[1].parent.useVersion
+		}
+
+		if ( version ) {
+
+			var data = {};
+			data[name] = {};
+			data[name][version] = {
+				dir : name + '-' + version,
+				pkg : name,
+				version : version
+			};
+
+			lib
+			.install(data);
+
+		} else {
+
+			lib
+			.search([name])
+			.done(function(data){
+				lib
+				.install(data);
+			});
+
+		}
+
+	}); 
+
+// rmlib
+program
+	.command('rmlib')
+	.description('remove a package from project')
+	.action(function( name ){
+
+		// check name
+		if ( typeof name !== 'string' ) {
+			helper.log('error', 'you must input a package name');
+			return;
+		}
+
+		var version;
+
+		if ( arguments[1].parent.useVersion ) {
+			version = arguments[1].parent.useVersion
+		}
+
+		if ( version ) {
+
+			var data = {};
+			data[name] = {};
+			data[name][version] = {
+				dir : name + '-' + version,
+				pkg : name,
+				version : version
+			};
+			lib.uninstall(data);
+
+		} else {
+
+			var data = {};
+			data[name] = project.libs[name];
+
+			if ( data[name] === undefined ) {
+				helper.log('error', 'project not install '+name+'.');
+				return;
+			}
+
+			lib.uninstall(data);
+
+		}
+
+	});
+
+// cleanlib
+program
+	.command('cleanlib')
+	.description('clean libs')
+	.action(function(){
+		// TODO
+	});
+
+// liblist
+program
+	.command('liblist')
+	.description('package info')
+	.action(function(){
+
+		console.log('project ' + chalk.cyan( project.name ) + '\t' + project.rootPath + project.jsPath + builder.jsDir.lib );
+
+		var libs = [];
+		_.each( project.libs, function(lv){
+			_.each( lv, function(v,k){
+				libs.push(v.pkg + '@' + v.version);
+			});
+		});
+
+		_.each( libs, function(v,k){
+			if ( (k+1) === libs.length ) {
+				console.log( '└──' + v );	
+			} else {
+				console.log( '├──' + v );	
+			}
+		});
+
+	});
 
 // ==================================================
 // option
 // ==================================================
-
+program.option('-v, --use-version <version>', 'specify a version');
 
 // ==================================================
 // program
