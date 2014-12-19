@@ -44,8 +44,14 @@ var builder = {
 	// libs config file
 	libConfig : '/.bakari-builder/libs',
 
+	// biz config file
+	bizConfig : '/.bakari-builder/biz',
+
 	// project config file
-	projectConfig : '/.bakari-builder/project.json'
+	projectConfig : '/.bakari-builder/project.json',
+
+	// biz template
+	biztpl : '/.biztpl'
 
 };
 
@@ -75,6 +81,28 @@ var project = {
 };
 
 // ==================================================
+// biz config
+// ==================================================
+var bizDefaultConfig = {
+
+	// 页面id
+	pageId : '',
+
+	// 继承
+	extendPage : '',
+
+	// 文件路径 
+	path : '',
+
+	// 备注
+	note : '',
+
+	// 需要的库
+	libs : []
+
+};
+
+// ==================================================
 // bowerrc config
 // ==================================================
 var bowerrc = {
@@ -95,6 +123,33 @@ var helper = {
 		delete project.libs;
 		project.lastupdate = moment().format('YYYY-MM-DD HH:mm:ss');
 		grunt.file.write( project.rootPath+builder.projectConfig, JSON.stringify( project ) );
+	},
+
+	firstToUpperCase : function( string ){
+		return string.slice(0,1).toUpperCase() + string.slice(1,string.length);
+	},
+
+	firstToLowerCase : function( string ){
+		return string.slice(0,1).toLowerCase() + string.slice(1,string.length);
+	},
+
+	dashToHump : function( string ){
+		
+		var wordList = string.split('/');
+
+	    // 如果分割后的数组长度为1 直接返回原始的字符串
+	    if ( wordList.length === 1 ) {
+	        return string;
+	    }
+
+	    for ( var i=0; i < wordList.length; i++ ){
+	        wordList[i] = helper.firstToUpperCase(wordList[i]);
+	    }
+
+	    wordList[0] = helper.firstToLowerCase( wordList[0] );
+
+	    return wordList.join('');
+
 	}
 
 };
@@ -298,8 +353,8 @@ cli.init = function(){
 		{
 			name : 'rootPath',
 			type : 'input',
-			message : 'project root path:',
-			default : shell.pwd()
+			message : 'project path:',
+			default : '.'
 		},
 		{
 			name : 'projectName',
@@ -605,6 +660,122 @@ program
 	.command('liblist')
 	.description('package info')
 	.action(cli.liblist);
+
+// addbiz @early
+cli.addbiz = function( page ){
+
+	var pageId = helper.dashToHump(page),
+		hasLibs = [];
+
+	_.each( project.libs, function(lv){
+		_.each( lv, function(v,k){
+			hasLibs.push(v.pkg+'@'+v.version);
+		});
+	});
+
+	inquirer.prompt([
+		{
+			name : 'checkPath',
+			type : 'confirm',
+			message : 'biz path:' + page
+		},
+		{
+			name : 'pageId',
+			type : 'input',
+			message : 'page id:',
+			default : pageId,
+			when : function(answers){
+				return answers.checkPath;
+			}
+		},
+		{
+			name : 'extendPage',
+			type : 'input',
+			message : 'extend page id:',
+			default : pageId.replace(/[A-Z][a-z0-9_]+?$/g, ''),
+			when : function(answers){
+				return answers.pageId;
+			}
+		},
+		{
+			name : 'useLibs',
+			type : 'checkbox',
+			message : 'use lib:',
+			choices : hasLibs,
+			when : function(answers){
+				return answers.extendPage;
+			}
+		},
+		{
+			name : 'note',
+			type : 'input',
+			message : 'page note:',
+			when : function(answers){
+				return answers.extendPage;
+			}
+
+		}
+	], function( answers ) {
+
+		// get template
+		var promise = Promise(),
+			file = '',
+			path = page.split('/'),
+			src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
+
+		promise.done(function(){
+			helper.log('added', answers.pageId + '\t:\t' + src);
+		});
+
+		if ( grunt.file.exists( src ) ) {
+			helper.log('error', src+' is already exists');
+			return;
+		}
+
+		if ( grunt.file.exists( project.rootPath+builder.biztpl ) ) {
+			file = grunt.file.read( project.rootPath+builder.biztpl );
+		}
+
+		// render
+		file = file.replace(/\{\{pageId\}\}/g, answers.pageId);
+		file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+
+		// make file
+		grunt.file.write( src, file );
+
+		// get libs
+		var libs = [];
+		_.each( answers.useLibs, function(v,k){
+			
+			var str = v.split('@');
+			libs.push({
+				pkg : str[0],
+				version : str[1],
+				dir : str[0]+'-'+str[1]
+			});
+
+		});
+
+		// make config
+		var biz = extend( true, bizDefaultConfig, {
+			pageId : pageId,
+			path : src,
+			extendPage : answers.extendPage,
+			libs : libs
+		});
+
+		// save config
+		grunt.file.write( project.rootPath+builder.bizConfig+'/'+path[0]+'/'+answers.pageId+'.json', JSON.stringify(biz) );
+
+		promise.resolve();
+		
+	});
+
+};
+program
+	.command('addbiz')
+	.description('add business code')
+	.action(cli.addbiz);
 
 // ==================================================
 // option
