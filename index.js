@@ -85,19 +85,19 @@ var project = {
 // ==================================================
 var bizDefaultConfig = {
 
-	// 页面id
+	// page id
 	pageId : '',
 
-	// 继承
+	// extend page id
 	extendPage : '',
 
-	// 文件路径 
+	// js files path 
 	path : '',
 
-	// 备注
+	// page note
 	note : '',
 
-	// 需要的库
+	// rely libs
 	libs : []
 
 };
@@ -118,7 +118,7 @@ var helper = {
 		console.log( chalk.red('bakari ') + chalk.green(status.toLocaleUpperCase()+' ') + (msg || '') );
 	},
 
-	// 保存项目配置
+	// save project config
 	saveProjectConfig : function(){
 		delete project.libs;
 		project.lastupdate = moment().format('YYYY-MM-DD HH:mm:ss');
@@ -137,7 +137,7 @@ var helper = {
 		
 		var wordList = string.split('/');
 
-	    // 如果分割后的数组长度为1 直接返回原始的字符串
+	    // if split the array length is 1, return original string
 	    if ( wordList.length === 1 ) {
 	        return string;
 	    }
@@ -152,8 +152,8 @@ var helper = {
 
 	},
 
-	// 检测依赖
-	// 输入一个page id检测是否有依赖的业务逻辑
+	// check biz rely
+	// input a page id, detecting whether there is dependent business logic 
 	checkBizRely : function( pageid ){
 
 		var rely = [];
@@ -195,7 +195,7 @@ var helper = {
 
 	},
 
-	// 某个pageid是否存在
+	// check some page id is exist
 	hasPageid : function( pageid ){
 		
 		var find = false;
@@ -220,7 +220,7 @@ var helper = {
 // ==================================================
 var lib = {
 
-	// 根据名称搜索包信息
+	// search package information by name
 	search : function( libs ){
 		
 		var promise = Promise(),
@@ -257,7 +257,7 @@ var lib = {
 
 	},
 
-	// 安装包
+	// install package
 	install : function( libs, cfg ){
 
 		cfg = extend(true, {
@@ -311,7 +311,7 @@ var lib = {
 
 	},
 
-	// 卸载包
+	// uninstall package
 	uninstall : function( libs, cfg ){
 		
 		cfg = extend(true, {
@@ -369,7 +369,7 @@ var lib = {
 
 	},
 
-	// 卸载所有的包
+	// uninstall all package
 	uninstallAll : function( cfg ){
 		// TODO
 	},
@@ -536,8 +536,15 @@ cli.clean = function(){
 	// reset libs
 	cli.cleanlib()
 	.done(function(){
-		promise.resolve();
+
+		// clean biz
+		cli.cleanbiz()
+		.done(function(){
+			promise.resolve();
+		});
+
 	});
+
 
 	return promise;
 
@@ -847,6 +854,156 @@ program
 	.description('add business code')
 	.action(cli.addbiz);
 
+
+// setbiz
+cli.setbiz = function( pageid ){
+	
+	var promise = Promise(),
+		config = helper.getBizConfig( pageid ),
+		libs = [],
+		hasLibs = [];
+
+	promise.done(function(){
+		helper.log('set success');
+	});
+
+	// check page id
+	if ( _.isEmpty(config) ) {
+		helper.log('error', 'not found '+pageid);
+		return;
+	}
+
+	_.each( config.libs, function(lv){
+		libs.push( lv.pkg+'@'+lv.version );
+	});
+
+	_.each( project.libs, function(lv){
+		_.each( lv, function(v,k){
+			hasLibs.push(v.pkg+'@'+v.version);
+		});
+	});
+
+	inquirer.prompt([
+		{
+			name : 'pageId',
+			type : 'input',
+			message : 'page id:',
+			default : config.pageId
+		},
+		{
+			name : 'extendPage',
+			type : 'input',
+			message : 'extend page id:',
+			default : config.extendPage,
+			when : function(answers){
+				return answers.pageId;
+			}
+		},
+		{
+			name : 'useLibs',
+			type : 'checkbox',
+			message : 'use lib:',
+			choices : hasLibs,
+			default : libs,
+			when : function(answers){
+				return answers.extendPage;
+			}
+		},
+		{
+			name : 'note',
+			type : 'input',
+			message : 'page note:',
+			default : config.note,
+			when : function(answers){
+				return answers.extendPage;
+			}
+
+		}
+	], function( answers ) {
+
+		var file = '',
+			path = answers.pageId.split(/[A-Z]/g),
+			src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
+
+		// check extend page
+		if ( !helper.hasPageid( answers.extendPage ) ) {
+			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
+			return;
+		}
+
+		// if pageid change need check child page
+		if ( answers.pageId !== config.pageId && helper.checkBizRely(config.pageId).length > 0 ) {
+			helper.log('error', config.pageId + ' has child page, can\'t change page id');
+			return;
+		}
+
+		// get js file content
+		if ( grunt.file.exists( config.path ) ) {
+			
+			var reg = new RegExp('^(B\.)'+config.pageId+'( \= B.)'+config.extendPage, 'g');
+			file = grunt.file.read( config.path );
+			file = file.replace(reg, '$1{{pageId}}$2{{extendPage}}');
+
+		} else {
+			// if can't find js file
+			file = grunt.file.read( project.rootPath+builder.biztpl );
+		}
+
+		// render
+		file = file.replace(/\{\{pageId\}\}/g, answers.pageId);
+		file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+
+		// make file
+		grunt.file.write( src, file );
+
+		// if page id cahnge, delete old file
+		if ( answers.pageId !== config.pageId &&
+			 grunt.file.exists( config.path ) ) {
+			grunt.file.delete( config.path );
+		}
+
+		// get libs
+		var libs = [];
+		_.each( answers.useLibs, function(v,k){
+			
+			var str = v.split('@');
+			libs.push({
+				pkg : str[0],
+				version : str[1],
+				dir : str[0]+'-'+str[1]
+			});
+
+		});
+		
+		// if page id change, change config
+		if ( answers.pageId !== config.pageId ) {
+			grunt.file.delete( helper.getBizConfigPath(config.pageId) );
+		}
+
+		// make config
+		var biz = extend( true, config, {
+			pageId : answers.pageId,
+			path : src,
+			extendPage : answers.extendPage,
+			libs : libs
+		});
+
+		// save config
+		grunt.file.write( helper.getBizConfigPath(answers.pageId), JSON.stringify(biz) );
+
+		promise.resolve();
+
+	});
+
+	return promise;
+
+};
+program
+	.command('setbiz')
+	.description('set biz config')
+	.action(cli.setbiz);
+
+
 // rmbiz
 cli.rmbiz = function( pageid ){
 	
@@ -898,6 +1055,7 @@ program
 	.description('remove business code')
 	.action(cli.rmbiz);
 
+
 // bizlist
 cli.bizlist = function(){
 	
@@ -926,6 +1084,7 @@ program
 	.command('bizlist')
 	.description('show all biz')
 	.action(cli.bizlist);
+
 
 // seebiz
 cli.seebiz = function( pageid ){
@@ -960,6 +1119,110 @@ program
 	.command('seebiz')
 	.description('show biz detail')
 	.action(cli.seebiz);
+
+
+// cleanbiz
+cli.cleanbiz = function(){
+	
+	var promise = Promise(),
+		excessPromise = Promise(),
+		bizSrc = project.rootPath + builder.jsPath + builder.jsDir.biz,
+		excess = [],
+		hasFiles = [],
+		pageid;
+
+	promise.done(function(){
+		helper.log('cleared all biz js files');
+	});
+
+	// get excess js files
+	grunt.file.recurse( bizSrc, function(abspath, rootdir, subdir, filename){
+		
+		pageid = filename.replace(/\.js$/g, '');
+		if ( !helper.hasPageid( pageid ) ) {
+			excess.push(abspath);
+		}
+		hasFiles.push(pageid);
+
+	});
+
+	// clean excess js files
+	inquirer.prompt([
+		{
+			name : 'cleanBizs',
+			type : 'checkbox',
+			message : 'need delete excess js files:',
+			choices : excess,
+			default : excess,
+			when : function(){
+				if ( !excess.length ) {
+					excessPromise.resolve();
+				}
+				return excess.length;
+			}
+		}
+	], function( answers ) {
+		
+		_.each( answers.cleanBizs, function(v){
+			
+			grunt.file.delete( v );
+			helper.log('delete', v );
+
+		});
+
+		excessPromise.resolve();
+
+	});
+
+	excessPromise.done(function(){
+		
+		// add missing js files
+		grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+
+			var find = false;
+			pageid = filename.replace(/\.json$/g, '');
+			_.find( hasFiles, function(v){
+				if ( v === pageid ) {
+					find = true;
+					return;
+				}
+			});
+
+			// if not find js file
+			if ( !find ) {
+
+				var file = '',
+					config = helper.getBizConfig(pageid);
+
+				// add missing file
+				if ( grunt.file.exists( project.rootPath+builder.biztpl ) ) {
+					file = grunt.file.read( project.rootPath+builder.biztpl );
+				}
+
+				// render
+				file = file.replace(/\{\{pageId\}\}/g, config.pageId);
+				file = file.replace(/\{\{extendPage\}\}/g, config.extendPage);
+
+				// make file
+				grunt.file.write( config.path, file );
+
+				helper.log('added', config.pageId + '\t:\t' + config.path);
+
+			}
+
+		});
+
+		promise.resolve();
+
+	});
+
+	return promise;
+
+};
+program
+	.command('cleanbiz')
+	.description('clean all biz js file')
+	.action(cli.cleanbiz);
 
 
 // ==================================================
