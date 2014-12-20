@@ -839,6 +839,8 @@ cli.addbiz = function( page ){
 		
 	});
 
+	return promise;
+
 };
 program
 	.command('addbiz')
@@ -888,11 +890,77 @@ cli.rmbiz = function( pageid ){
 
 	});
 
+	return promise;
+
 };
 program
 	.command('rmbiz')
 	.description('remove business code')
 	.action(cli.rmbiz);
+
+// bizlist
+cli.bizlist = function(){
+	
+	var promise = Promise(),
+		list = [];
+
+	console.log('project ' + chalk.cyan( project.name ) + '\t' + project.rootPath + project.jsPath + builder.jsDir.biz );
+
+	// get all biz
+	grunt.file.recurse( project.rootPath+builder.bizConfig, function(abspath, rootdir, subdir, filename){
+		list.push( helper.getBizConfig(filename.replace(/\.json$/g, '')) );
+	});
+
+	_.each( list, function(v,k){
+		if ( (k+1) === list.length ) {
+			console.log( '└──' + v.pageId + ' ~ ' + v.extendPage );
+		} else {
+			console.log( '├──' + v.pageId + ' ~ ' + v.extendPage );
+		}
+	});
+
+	return promise;
+
+};
+program
+	.command('bizlist')
+	.description('show all biz')
+	.action(cli.bizlist);
+
+// seebiz
+cli.seebiz = function( pageid ){
+	
+	var promise = Promise(),
+		detail = helper.getBizConfig(pageid);
+
+	console.log('biz '+chalk.cyan( detail.pageId ));
+	_.each(detail, function(v,k){
+		
+		if ( typeof v === 'string' ) {
+			console.log( k + ' : ' + v );
+		} else if ( k === 'libs' ) {
+
+			var libs = [];
+			_.each( v, function(lv){
+				libs.push( lv.pkg+'@'+lv.version );
+			});
+
+			console.log( k + ' : ' + libs.join(' | ') );
+
+		} else if ( _.isArray(v) ) {
+			console.log( k + ' : ' + v.join(' | ') );
+		}
+		
+	});
+
+	return promise;
+
+};
+program
+	.command('seebiz')
+	.description('show biz detail')
+	.action(cli.seebiz);
+
 
 // ==================================================
 // option
