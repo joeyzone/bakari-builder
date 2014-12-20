@@ -21,11 +21,11 @@ bakari-builder
 	# 添加一个指定版本的库
 	$ bakari addlib jquery -v 1.10.0
 	
-	# 移除一个库
-	$ bakari rmlib jquery
-	
 	# 查看当前项目中包含的库
 	$ bakari liblist
+
+	# 添加一个业务
+	$ bakari addbiz commit/add
 	
 ## Flags
 - `-h` or `-help` 查看帮助
@@ -52,7 +52,17 @@ bakari-builder
 
 ##Biz Commands
 
-under development
+`addbiz <path>` : 添加一个业务到项目中，通过业务的路径bakari将自动生成pageId及继承关系。
+
+`rmbiz <pageid>` : 根据`page id`移除一个业务，移除前需要先移除所有子业务。
+
+`bizlist` : 查看所有的业务。
+
+`seebiz <pageid>` : 查看某个业务详情。
+
+`cleanbiz` : 清理项目中的业务，根据项目业务配置，清除多余的业务js文件，同时补全缺失的js文件。
+
+`setbiz <pageid>` : 设置一个业务配置，修改业务的`page id`或`extend page id`，builder将自动修改文件名及文件中的继承关系。
 
 ##Code Build
 
