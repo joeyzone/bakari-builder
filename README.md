@@ -52,6 +52,8 @@ bakari-builder
 
 ##Biz Commands
 
+`addbiz <path>` : 添加一个业务到项目中，通过业务的路径bakari将自动生成pageId及继承关系。
+
 under development
 
 ##Code Build

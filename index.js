@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.1
+// bakariBuilder 0.0.2 @dev
 // ==================================================
 'use strict';
 var chalk = require('chalk');
@@ -149,6 +149,66 @@ var helper = {
 	    wordList[0] = helper.firstToLowerCase( wordList[0] );
 
 	    return wordList.join('');
+
+	},
+
+	// 检测依赖
+	// 输入一个page id检测是否有依赖的业务逻辑
+	checkBizRely : function( pageid ){
+
+		var rely = [];
+		grunt.file.recurse( project.rootPath+builder.bizConfig, function(abspath, rootdir, subdir, filename){
+
+			var json = grunt.file.readJSON(abspath);
+
+			if ( json.extendPage === pageid ) {
+				rely.push({
+					path : json.path,
+					pageId : json.pageId
+				});
+			}
+
+		});
+
+		return rely;
+		
+	},
+
+	// get biz page config path
+	getBizConfigPath : function( pageid ){
+		
+		return project.rootPath+builder.bizConfig+'/'+pageid.split(/[A-Z]/g)[0]+'/'+pageid+'.json';
+
+	},
+
+	// get some biz page config
+	getBizConfig : function( pageid ){
+		
+		var config = {},
+			src = helper.getBizConfigPath( pageid );
+
+		if ( grunt.file.exists(src) ) {
+			config = grunt.file.readJSON(src);
+		}
+		
+		return config;
+
+	},
+
+	// 某个pageid是否存在
+	hasPageid : function( pageid ){
+		
+		var find = false;
+		grunt.file.recurse( project.rootPath+builder.bizConfig, function(abspath, rootdir, subdir, filename){
+
+			var page = filename.replace(/\.json$/g, '');
+			if ( page === pageid ) {
+				find = true;
+			}
+
+		});
+
+		return find;
 
 	}
 
@@ -489,7 +549,8 @@ program
 
 // test @early
 cli.test = function(){
-	helper.log('run builder');
+	helper.checkBizRely('seller');
+	helper.log('run test');
 };
 program
 	.command('test')
@@ -664,8 +725,12 @@ program
 // addbiz @early
 cli.addbiz = function( page ){
 
-	var pageId = helper.dashToHump(page),
-		hasLibs = [];
+	var promise = Promise(),
+		pageId = helper.dashToHump(page),
+		hasLibs = [],
+		file = '',
+		path = page.split('/');
+
 
 	_.each( project.libs, function(lv){
 		_.each( lv, function(v,k){
@@ -717,18 +782,21 @@ cli.addbiz = function( page ){
 		}
 	], function( answers ) {
 
-		// get template
-		var promise = Promise(),
-			file = '',
-			path = page.split('/'),
-			src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
-
 		promise.done(function(){
 			helper.log('added', answers.pageId + '\t:\t' + src);
 		});
 
+		var src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
+
+		// check file exists
 		if ( grunt.file.exists( src ) ) {
 			helper.log('error', src+' is already exists');
+			return;
+		}
+
+		// check extend page
+		if ( !helper.hasPageid( answers.extendPage ) ) {
+			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
 			return;
 		}
 
@@ -765,7 +833,7 @@ cli.addbiz = function( page ){
 		});
 
 		// save config
-		grunt.file.write( project.rootPath+builder.bizConfig+'/'+path[0]+'/'+answers.pageId+'.json', JSON.stringify(biz) );
+		grunt.file.write( helper.getBizConfigPath(answers.pageId), JSON.stringify(biz) );
 
 		promise.resolve();
 		
@@ -776,6 +844,55 @@ program
 	.command('addbiz')
 	.description('add business code')
 	.action(cli.addbiz);
+
+// rmbiz
+cli.rmbiz = function( pageid ){
+	
+	var promise = Promise();
+
+	promise.done(function(){
+		helper.log('removed', pageid);
+	});
+
+	// check child biz page
+	var child = helper.checkBizRely( pageid );
+
+	if ( child.length > 0 ) {
+		helper.log('error', 'this page contains sub-pages:');
+		_.each(child, function(v){
+			console.log( v.pageId+' : '+v.path );
+		});
+		return;
+	}
+
+	inquirer.prompt([
+		{
+			name : 'recheck',
+			type : 'confirm',
+			message : 'remove page : ' + pageid
+		}
+	], function(){
+
+		// get page config
+		var config = helper.getBizConfig( pageid );
+		
+		// remove biz page
+		grunt.file.delete( config.path );
+		helper.log('delete', config.path);
+
+		// remove config
+		grunt.file.delete( helper.getBizConfigPath(pageid) );
+		helper.log('delete', pageid+' config');
+
+		promise.resolve();
+
+	});
+
+};
+program
+	.command('rmbiz')
+	.description('remove business code')
+	.action(cli.rmbiz);
 
 // ==================================================
 // option
