@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.2 @dev
+// bakariBuilder 0.0.5 @dev
 // ==================================================
 'use strict';
 var chalk = require('chalk');
@@ -11,7 +11,7 @@ var shell = require('shelljs');
 var grunt = require('grunt');
 var bower = require('bower');
 var _ = require('underscore');
-var Promise = require('./lib/promise.js');
+var Promise = require('bakari-promise');
 var extend = require('extend');
 var resetBowerConfig = require('./node_modules/bower/lib/config').reset;
 
