@@ -4,6 +4,7 @@
 // ==================================================
 'use strict';
 var startTime = +new Date();
+var version = '0.0.5';
 var chalk = require('chalk'),
 	inquirer = require('inquirer'),
 	moment = require('moment'),
@@ -25,6 +26,18 @@ var chalk = require('chalk'),
  //    livereload = require('gulp-livereload'),
  //    header = require('gulp-header'),
  //    footer = require('gulp-footer');
+
+// ==================================================
+// needLibs - demand loading libs
+// ==================================================
+var needLibs = function( name, libs ){
+	
+	if ( global[name] === undefined ) {
+		global[name] = require( libs || name );
+	}
+
+};
+
 
 // ==================================================
 // builder config
@@ -49,6 +62,9 @@ var builder = {
 	// bower config
 	bowerrcPath : '/.bowerrc',
 
+	// builder version file
+	versionFile : '/.bakari-builder/.version',
+
 	// builder config path
 	builderPath : '/.bakari-builder',
 
@@ -65,6 +81,7 @@ var builder = {
 	biztpl : '/.biztpl'
 
 };
+
 
 // ==================================================
 // project config
@@ -90,6 +107,30 @@ var project = {
 	libs : {}
 
 };
+
+
+// ==================================================
+// loading project
+// ==================================================
+// load project config
+if ( grunt.file.exists( shell.pwd() + builder.projectConfig ) ){
+	project = extend( true, project, grunt.file.readJSON( shell.pwd() + builder.projectConfig ) );
+}
+
+// load libs config
+if ( grunt.file.exists( shell.pwd() + builder.libConfig ) ) {
+
+	grunt.file.recurse( shell.pwd() + builder.libConfig, function(abspath, rootdir, subdir, filename){
+
+		if ( project.libs[subdir] === undefined ) {
+			project.libs[subdir] = {};
+		}
+
+		project.libs[subdir][filename.replace(/\.json$/,'')] = grunt.file.readJSON( abspath );
+		
+	});
+
+}
 
 // ==================================================
 // biz config
@@ -212,6 +253,35 @@ var helper = {
 
 	},
 
+	// get some lib config
+	getLibsConfig : function( pkg, version ){
+		
+		var config = {},
+			src = project.rootPath + builder.libConfig + '/' + pkg + '/' + version + '.json';
+		
+		if ( grunt.file.exists(src) ) {
+			config = grunt.file.readJSON(src);
+		}
+		
+		return config;
+
+	},
+
+	// get all parent page id
+	getParentPageId : function( pageid, list ){
+		
+		list = list || [];
+		var parent = helper.getBizConfig(pageid).extendPage;
+
+		if ( parent ) {
+			list.push( parent );
+			helper.getParentPageId( parent, list );
+		}
+
+		return list;
+
+	},
+
 	// check some page id is exist
 	hasPageid : function( pageid ){
 		
@@ -230,7 +300,6 @@ var helper = {
 	}
 
 };
-
 
 // ==================================================
 // lib function
@@ -316,11 +385,12 @@ var lib = {
 				})
 				.on('end', function(installed){
 
-					_.find(installed, function(){
+					_.find(installed, function( pkv ){
 
 						helper.log( cfg.note, v.pkg + '@' + v.version );
 
 						// set config
+						v.main = pkv.pkgMeta.main;
 						grunt.file.mkdir(project.rootPath + builder.libConfig + '/' + v.pkg);
 						grunt.file.write(project.rootPath + builder.libConfig + '/' + v.pkg + '/' + v.version + '.json', JSON.stringify(v));
 
@@ -432,28 +502,6 @@ var lib = {
 
 var cli = {};
 
-// ==================================================
-// loading project
-// ==================================================
-// load project config
-if ( grunt.file.exists( shell.pwd() + builder.projectConfig ) ){
-	project = extend( true, project, grunt.file.readJSON( shell.pwd() + builder.projectConfig ) );
-}
-
-// load libs config
-if ( grunt.file.exists( shell.pwd() + builder.libConfig ) ) {
-
-	grunt.file.recurse( shell.pwd() + builder.libConfig, function(abspath, rootdir, subdir, filename){
-
-		if ( project.libs[subdir] === undefined ) {
-			project.libs[subdir] = {};
-		}
-
-		project.libs[subdir][filename.replace(/\.json$/,'')] = grunt.file.readJSON( abspath );
-		
-	});
-
-}
 
 // ==================================================
 // gulp task
@@ -473,6 +521,8 @@ taskConfig.concat = {
 };
 gulp.task('concat', function(){
 
+	needLibs('concat', 'gulp-concat');
+
 	if ( taskConfig.concat.src === null ||
 		 taskConfig.concat.dest === null ||
 		 taskConfig.concat.file === null ) {
@@ -489,6 +539,9 @@ gulp.task('concat', function(){
 		.pipe(gulp.dest(taskConfig.concat.dest));
 
 });
+
+// build task
+gulp.task('build', ['concat']);
 
 
 // ==================================================
@@ -943,11 +996,13 @@ cli.addbiz = function( page ){
 		var libs = [];
 		_.each( answers.useLibs, function(v,k){
 			
-			var str = v.split('@');
+			var str = v.split('@'),
+			 	lib = helper.getLibsConfig( str[0], str[1] );
 			libs.push({
 				pkg : str[0],
 				version : str[1],
-				dir : str[0]+'-'+str[1]
+				dir : str[0]+'-'+str[1],
+				main : lib.main
 			});
 
 		});
@@ -1088,11 +1143,13 @@ cli.setbiz = function( pageid ){
 		var libs = [];
 		_.each( answers.useLibs, function(v,k){
 			
-			var str = v.split('@');
+			var str = v.split('@'),
+			 	lib = helper.getLibsConfig( str[0], str[1] );
 			libs.push({
 				pkg : str[0],
 				version : str[1],
-				dir : str[0]+'-'+str[1]
+				dir : str[0]+'-'+str[1],
+				main : lib.main
 			});
 
 		});
@@ -1103,12 +1160,12 @@ cli.setbiz = function( pageid ){
 		}
 
 		// make config
-		var biz = extend( true, config, {
+		var biz = {
 			pageId : answers.pageId,
 			path : src,
 			extendPage : answers.extendPage,
 			libs : libs
-		});
+		};
 
 		// save config
 		grunt.file.write( helper.getBizConfigPath(answers.pageId), JSON.stringify(biz) );
@@ -1353,11 +1410,49 @@ program
 
 
 // build
-cli.build = function(){
+cli.build = function( pageid ){
 
 	var promise = Promise();
 
-	promise.done(commandDone);
+	// if has pageid, build this pageid
+	if ( typeof pageid === 'string' ) {
+
+		// get config
+		var config = helper.getBizConfig( pageid );
+
+		// find src
+		var src = [];
+
+		// set js file path
+		src.push( config.path );
+
+		// find all parent page
+		var parents = helper.getParentPageId( pageid );
+		_.each( parents, function(v){
+			var path = helper.getBizConfig( v ).path;
+			if ( path ) {
+				src.push(path);
+			}
+		});
+
+		// set libs
+		var libs = config.libs.reverse();
+		_.each( libs, function(v){
+			src.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + v.dir + '/' + v.main );
+		});
+
+		// set task config
+		taskConfig.concat.src = src.reverse();
+		taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
+		taskConfig.concat.file = config.pageId+'.js';
+
+		console.log( taskConfig );
+		// run task
+		gulp.start('build');
+
+	}
+
+	promise.done(commandDone).resolve();
 	return promise;
 
 };
@@ -1365,6 +1460,68 @@ program
 	.command('build')
 	.description('build development and production file')
 	.action(cli.build);
+
+
+// ==================================================
+// set version & update
+// ==================================================
+var versionSrc = project.rootPath+builder.versionFile;
+
+var updateScript = {
+
+	// 0.0.3 -> 0.0.5
+	'0.0.5' : function(){
+
+		// get libs main
+		cli.cleanlib();
+		
+		// reset biz config, add libs main
+		var bizConfigSrc = project.rootPath + builder.bizConfig;
+		if ( grunt.file.exists( bizConfigSrc ) ) {
+			grunt.file.recurse( bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				
+				var biz = grunt.file.readJSON(abspath);
+
+				_.each( biz.libs, function( lv ){
+					lv.main = helper.getLibsConfig( lv.pkg, lv.version ).main || '';
+				});
+
+				grunt.file.write( abspath, JSON.stringify(biz) );
+
+			});
+		}
+
+		helper.log('update to', '0.0.5');
+
+	}
+
+
+};
+
+if ( grunt.file.exists(versionSrc) ) {
+
+	// check version, if version update, run update script
+	var nowVerion = grunt.file.read(versionSrc);
+	if ( version > nowVerion ) {
+
+		helper.log('updating', 'plase wait...');
+		_.each( updateScript, function(v,k){
+			if ( k > nowVerion && k <= version ) {
+				v();
+			}
+		});
+
+		// reset version
+		grunt.file.write( versionSrc, version);
+
+	}
+
+} else {
+	
+	// if not version file, create it
+	grunt.file.write( versionSrc, version);
+
+}
 
 
 // ==================================================
