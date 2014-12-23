@@ -630,12 +630,17 @@ gulp.task('_beforeBuild', function(){
 
 	// report concat files
 	_.each( taskConfig.concat.src, function(v,k){
+		
 		if ( k === 0 ) {
 			helper.log('┏', v);
 		} else {
 			helper.log('┣', v);
 		}
+
 	});
+
+	// set version pageid
+	taskConfig.version.pageId = [ taskConfig.concat.file.replace(/\.js$/g,'') ];
 
 });
 
@@ -782,11 +787,55 @@ gulp.task('watch', function(){
 
 });
 
+// version task
+taskConfig.version = {
+	pageId : null
+};
+gulp.task('version', function(){
+
+	needLibs('MD5', 'MD5');
+	
+	if ( taskConfig.uglify.src === null ) {
+		helper.log('error', 'task version src is null');
+		return;
+	}
+
+	// set pro version
+	// get version file
+	var proVersion = {},
+		proVersionSrc = project.rootPath + builder.jsPath + builder.jsDir.proVersion;
+
+	if ( grunt.file.exists( proVersionSrc ) ) {
+		proVersion = grunt.file.readJSON( proVersionSrc );
+	}
+
+	// get src version
+	_.each( taskConfig.version.pageId, function(v){
+		
+		var fileSrc = helper.getBizConfig( v ).path,
+			md5Str = '';
+		
+		if ( grunt.file.exists(fileSrc) ) {
+			md5Str = MD5( grunt.file.read(fileSrc) );
+		}
+
+		proVersion[v] = {
+			md5 : md5Str,
+			date : _.now()
+		};
+
+	});
+	
+	// save pro version
+	grunt.file.write( proVersionSrc, JSON.stringify(proVersion) );
+
+});
+
 // build task
 gulp.task('build', ['_beforeBuild', 'jshint']);
 
 // _build private task
-gulp.task('_build', ['concat', 'uglify', '_buildDone']);
+gulp.task('_build', ['concat', 'uglify', 'version', '_buildDone']);
 
 
 // ==================================================
@@ -961,6 +1010,7 @@ cli.test = function(){
 
 	var promise = Promise();
 
+	gulp.start('version');
 	helper.log('run test');
 
 	promise.done(commandDone).resolve();
