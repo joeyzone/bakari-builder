@@ -22,10 +22,10 @@ var chalk = require('chalk'),
 	// concat = require('gulp-concat'),
 	// uglify = require('gulp-uglify'),
 	// jshint = require('gulp-jshint'),
- //    rename = require('gulp-rename'),
- //    livereload = require('gulp-livereload'),
- //    header = require('gulp-header'),
- //    footer = require('gulp-footer');
+	// rename = require('gulp-rename'),
+	// livereload = require('gulp-livereload'),
+	// header = require('gulp-header'),
+	// footer = require('gulp-footer');
 
 // ==================================================
 // needLibs - demand loading libs
@@ -55,7 +55,9 @@ var builder = {
 
 		src : '/src',
 		lib : '/src/lib',
-		biz : '/src/biz'
+		biz : '/src/biz',
+
+		proVersion : '/pro/.version'
 
 	},
 
@@ -78,7 +80,7 @@ var builder = {
 	projectConfig : '/.bakari-builder/project.json',
 
 	// biz template
-	biztpl : '/.biztpl'
+	biztpl : '/.biztpl',
 
 };
 
@@ -282,6 +284,35 @@ var helper = {
 
 	},
 
+	// get all child page id
+	getChildPageId : function( pageid, list ){
+		
+		list = list || [];
+
+		var addList = [];
+
+		if ( grunt.file.exists( project.rootPath + builder.bizConfig ) ) {
+			grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+				
+				var config = grunt.file.readJSON(abspath);
+
+				if ( config.extendPage === pageid ) {
+					addList.push(config.pageId);
+				}
+
+			});
+		}
+
+		list = list.concat(addList);
+
+		_.each(addList, function(v){
+			list = list.concat(helper.getChildPageId( v ));
+		});
+
+		return list;
+
+	},
+
 	// check some page id is exist
 	hasPageid : function( pageid ){
 		
@@ -301,6 +332,8 @@ var helper = {
 
 	// build one page js file
 	buildPageJs : function( pageid ){
+
+		var promise = Promise();
 		
 		// get config
 		var config = helper.getBizConfig( pageid );
@@ -354,19 +387,31 @@ var helper = {
 		taskConfig.uglify.file = config.pageId+'.js';
 
 		// just hint biz code
-		taskConfig.jshint.src = bizsrc.reverse();
-
-		// report concat js file
-		_.each( src, function(v,k){
-			if ( k === 0 ) {
-				helper.log('┏ ', v);
-			} else {
-				helper.log('┣', v);
-			}
-		});
+		taskConfig.jshint.src = bizsrc;
 
 		// run task
 		gulp.start('build');
+
+		buildPromise = promise;
+		return promise;
+
+	},
+
+	// build js list
+	buildJsList : function( list ){
+		
+		var promise = Promise();
+		var builder = function(){
+			if ( list.length > 0 ) {
+				helper.buildPageJs( list.shift() ).done(builder);
+			} else {
+				promise.resolve();
+			}
+		};
+
+		builder();
+
+		return promise;
 
 	}
 
@@ -577,11 +622,37 @@ var cli = {};
 // ==================================================
 // gulp task
 // ==================================================
-var taskConfig = {};
+var taskConfig = {},
+	buildPromise;
 
-// report task
-gulp.task('report', function(){
-	helper.log('┗', chalk.green('━➞ ' + taskConfig.concat.file.replace(/\.js$/g, '') + ' ') + taskConfig.concat.dest + '/' + taskConfig.concat.file );
+// beforeBuild private task
+gulp.task('_beforeBuild', function(){
+
+	// report concat files
+	_.each( taskConfig.concat.src, function(v,k){
+		if ( k === 0 ) {
+			helper.log('┏', v);
+		} else {
+			helper.log('┣', v);
+		}
+	});
+
+});
+
+// buildDone private task
+gulp.task('_buildDone', function(){
+
+	helper.log('┗', chalk.green('━➞ ' + taskConfig.concat.file.replace(/\.js$/g, '') + ' ') + taskConfig.concat.file );
+	helper.log('build success');
+	buildPromise.resolve();
+
+});
+
+// buildFail private task
+gulp.task('_buildFail', function(){
+	helper.log('┗', chalk.green('━➞ jshint fail') );
+	helper.log('build fail');
+	buildPromise.reject();
 });
 
 // defautl task
@@ -596,16 +667,33 @@ gulp.task('jshint', function(){
 	needLibs('jshint', 'gulp-jshint');
 	needLibs('map', 'map-stream');
 
+	var srcLen = taskConfig.jshint.src.length,
+		index = 0,
+		hintFail = false;
+
 	if ( taskConfig.jshint.src === null ) {
 		helper.log('error', 'task jshint src is null');
 		return;
 	}
 
 	var bakariReporter = map(function (file, cb) {
+
+		index++;
+
 		if (!file.jshint.success) {
-	  		helper.log('warning', 'jshint fail');
+			hintFail = true;
 	  	}
+
+		if ( srcLen === index ) {
+			if ( hintFail ) {
+				gulp.start('_buildFail');
+			} else{
+				gulp.start('_build');
+			}
+		}
+
 	  	cb(null, file);
+
 	});
 
 	gulp.src(taskConfig.jshint.src)
@@ -664,8 +752,41 @@ gulp.task('uglify', function(){
 
 });
 
+// watch task
+taskConfig.watch = {
+	src : null
+};
+gulp.task('watch', function(){
+	
+	helper.log('watching', taskConfig.watch.src.join('\n'));
+
+	gulp.watch(taskConfig.watch.src)
+	.on('change', function(data){
+
+		if ( data.type === 'changed' ) {
+
+			helper.log('changed', data.path);
+
+			var pageid = data.path.replace(/.+\/([a-zA-Z0-9]+?)\.js$/g, '$1'),
+				childList = helper.getChildPageId( pageid );
+
+			helper.buildPageJs(pageid).done(function(){
+				helper.buildJsList(childList).done(function(){
+					helper.log('watching...');
+				});
+			});
+
+		}
+
+	});
+
+});
+
 // build task
-gulp.task('build', ['jshint', 'concat', 'uglify', 'report']);
+gulp.task('build', ['_beforeBuild', 'jshint']);
+
+// _build private task
+gulp.task('_build', ['concat', 'uglify', '_buildDone']);
 
 
 // ==================================================
@@ -840,7 +961,6 @@ cli.test = function(){
 
 	var promise = Promise();
 
-	gulp.start('default');
 	helper.log('run test');
 
 	promise.done(commandDone).resolve();
@@ -1532,14 +1652,12 @@ cli.build = function( pageid ){
 
 	var promise = Promise();
 
-	promise.done(function(){
-		helper.log('build success');
-	});
-
 	// if has pageid, build this pageid
 	if ( typeof pageid === 'string' ) {
 
-		helper.buildPageJs(pageid);
+		helper.buildPageJs(pageid).done(function(){
+			promise.resolve();
+		});
 
 	} else {
 
@@ -1548,18 +1666,21 @@ cli.build = function( pageid ){
 		var bizConfigSrc = project.rootPath + builder.bizConfig;
 		if ( grunt.file.exists(bizConfigSrc) ) {
 
+			var list = [];
 			grunt.file.recurse(bizConfigSrc, function(abspath, rootdir, subdir, filename){
-				
 				pageid = filename.replace(/\.json$/g,'');
-				helper.buildPageJs(pageid);
+				list.push(pageid);
+			});
 
+			helper.buildJsList(list).done(function(){
+				promise.resolve();
 			});
 
 		}
 
 	}
 
-	promise.done(commandDone).resolve();
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -1567,6 +1688,25 @@ program
 	.command('build')
 	.description('build development and production file')
 	.action(cli.build);
+
+// dev
+cli.dev = function(){
+	
+	var promise = Promise();
+
+	taskConfig.watch.src = [
+		project.rootPath + builder.jsPath + builder.jsDir.src + '/**/*'
+	];
+	gulp.start('watch');
+
+	promise.done(commandDone).resolve();
+	return promise;
+
+};
+program
+	.command('dev')
+	.description('watch source file change and build file')
+	.action(cli.dev);
 
 
 // ==================================================
