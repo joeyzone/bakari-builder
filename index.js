@@ -6,26 +6,14 @@
 var startTime = +new Date();
 var version = '0.0.5';
 var chalk = require('chalk'),
-	inquirer = require('inquirer'),
-	moment = require('moment'),
 	program = require('commander'),
 	shell = require('shelljs'),
 	grunt = require('grunt'),
-	bower = require('bower'),
 	_ = require('underscore'),
 	Promise = require('bakari-promise'),
 	extend = require('extend'),
 	resetBowerConfig = require('./node_modules/bower/lib/config').reset,
 	gulp = require('gulp');
-
-	// demand loading gulp libs
-	// concat = require('gulp-concat'),
-	// uglify = require('gulp-uglify'),
-	// jshint = require('gulp-jshint'),
-	// rename = require('gulp-rename'),
-	// livereload = require('gulp-livereload'),
-	// header = require('gulp-header'),
-	// footer = require('gulp-footer');
 
 // ==================================================
 // needLibs - demand loading libs
@@ -80,7 +68,9 @@ var builder = {
 	projectConfig : '/.bakari-builder/project.json',
 
 	// biz template
-	biztpl : '/.biztpl',
+	biztpl : '/.jsbiztpl',
+
+	jshintConfig : '/.jshintrc'
 
 };
 
@@ -94,7 +84,7 @@ var project = {
 	name : null,
 
 	// 项目根目录
-	rootPath : null,
+	rootPath : '.',
 
 	// 初始化js
 	initJs : null,
@@ -112,17 +102,18 @@ var project = {
 
 
 // ==================================================
-// loading project
+// loading data
 // ==================================================
 // load project config
-if ( grunt.file.exists( shell.pwd() + builder.projectConfig ) ){
-	project = extend( true, project, grunt.file.readJSON( shell.pwd() + builder.projectConfig ) );
+var pwd = shell.pwd();
+if ( grunt.file.exists( pwd + builder.projectConfig ) ){
+	project = extend( true, project, grunt.file.readJSON( pwd + builder.projectConfig ) );
 }
 
 // load libs config
-if ( grunt.file.exists( shell.pwd() + builder.libConfig ) ) {
+if ( grunt.file.exists( pwd + builder.libConfig ) ) {
 
-	grunt.file.recurse( shell.pwd() + builder.libConfig, function(abspath, rootdir, subdir, filename){
+	grunt.file.recurse( pwd + builder.libConfig, function(abspath, rootdir, subdir, filename){
 
 		if ( project.libs[subdir] === undefined ) {
 			project.libs[subdir] = {};
@@ -132,6 +123,11 @@ if ( grunt.file.exists( shell.pwd() + builder.libConfig ) ) {
 		
 	});
 
+}
+
+// load jshint config
+if ( grunt.file.exists( pwd + builder.jshintConfig ) ) {
+	var jshintConfig = grunt.file.readJSON( pwd + builder.jshintConfig );
 }
 
 // ==================================================
@@ -164,6 +160,21 @@ var bowerrc = {
 };
 
 // ==================================================
+// cache
+// ==================================================
+var cache = {
+
+	bizConfig : {},
+
+	libConfig : {},
+
+	parentPageId : {},
+
+	libChild : {}
+
+};
+
+// ==================================================
 // helper
 // ==================================================
 var helper = {
@@ -180,6 +191,7 @@ var helper = {
 
 	// save project config
 	saveProjectConfig : function(){
+		needLibs('moment', 'moment');
 		delete project.libs;
 		project.lastupdate = moment().format('YYYY-MM-DD HH:mm:ss');
 		grunt.file.write( project.rootPath+builder.projectConfig, JSON.stringify( project ) );
@@ -247,8 +259,11 @@ var helper = {
 		var config = {},
 			src = helper.getBizConfigPath( pageid );
 
-		if ( grunt.file.exists(src) ) {
+		if ( cache.bizConfig[pageid] ) {
+			config = cache.bizConfig[pageid];
+		} else if ( grunt.file.exists(src) ) {
 			config = grunt.file.readJSON(src);
+			cache.bizConfig[pageid] = config;
 		}
 		
 		return config;
@@ -261,11 +276,47 @@ var helper = {
 		var config = {},
 			src = project.rootPath + builder.libConfig + '/' + pkg + '/' + version + '.json';
 		
-		if ( grunt.file.exists(src) ) {
+		if ( cache.libConfig[pkg+'@'+version] ) {
+			config = cache.libConfig[pkg+'@'+version];
+		} else if ( grunt.file.exists(src) ) {
 			config = grunt.file.readJSON(src);
+			cache.libConfig[pkg+'@'+version] = config;
 		}
 		
 		return config;
+
+	},
+
+	// get rely lib of biz
+	getLibsChild : function( pkg, version ){
+		
+		var list = [];
+
+		// check cache
+		if ( cache.libChild[pkg+'@'+version] ) {
+
+			list = cache.libChild[pkg+'@'+version];
+
+		} else if ( grunt.file.exists( project.rootPath + builder.bizConfig ) ) {
+			
+			// each all biz config
+			grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+				
+				var config = grunt.file.readJSON(abspath);
+
+				_.each(config.libs, function(v){
+					if ( v.pkg === pkg && v.version === version ) {
+						list.push(config.pageId);
+					}
+				});
+
+			});
+
+			cache.libChild[pkg+'@'+version] = list;
+
+		}
+
+		return list;
 
 	},
 
@@ -273,13 +324,27 @@ var helper = {
 	getParentPageId : function( pageid, list ){
 		
 		list = list || [];
-		var parent = helper.getBizConfig(pageid).extendPage;
 
-		if ( parent ) {
-			list.push( parent );
-			helper.getParentPageId( parent, list );
+		if ( cache.parentPageId[pageid] ) {
+
+			// query cache
+			list = cache.parentPageId[pageid];
+
+		} else {
+
+			var parent = helper.getBizConfig(pageid).extendPage;
+			if ( parent ) {
+				list.push( parent );
+				helper.getParentPageId( parent, list );
+			}
+
+			// write cache
+			if ( list.length === 0 ) {
+				cache.parentPageId[pageid] = list;
+			}
+
 		}
-
+		
 		return list;
 
 	},
@@ -390,7 +455,7 @@ var helper = {
 		taskConfig.jshint.src = bizsrc;
 
 		// run task
-		gulp.start('build');
+		buildWithDev ? gulp.start('buildWithDev') : gulp.start('build');
 
 		buildPromise = promise;
 		return promise;
@@ -424,6 +489,8 @@ var lib = {
 
 	// search package information by name
 	search : function( libs ){
+
+		needLibs('bower', 'bower');
 		
 		var promise = Promise(),
 			info = {},
@@ -470,6 +537,8 @@ var lib = {
 
 	// install package
 	install : function( libs, cfg ){
+
+		needLibs('bower', 'bower');
 
 		cfg = extend(true, {
 			note : 'installed',
@@ -538,6 +607,8 @@ var lib = {
 
 	// uninstall package
 	uninstall : function( libs, cfg ){
+
+		needLibs('bower', 'bower');
 		
 		cfg = extend(true, {
 			note : 'uninstalled'
@@ -556,6 +627,13 @@ var lib = {
 			_.each(lv, function(v,k){
 
 				num++;
+
+				// check libs rely
+				var libChild = helper.getLibsChild( v.pkg, v.version );
+				if ( libChild.length > 0 ) {
+					helper.log('error', 'some biz rely '+v.pkg+'@'+v.version+':\n'+libChild.join('\n'));
+					return;
+				}
 
 				bower.commands
 				.uninstall([v.dir], { save: true }, {})
@@ -623,7 +701,8 @@ var cli = {};
 // gulp task
 // ==================================================
 var taskConfig = {},
-	buildPromise;
+	buildPromise,
+	buildWithDev = null;
 
 // beforeBuild private task
 gulp.task('_beforeBuild', function(){
@@ -693,7 +772,7 @@ gulp.task('jshint', function(){
 			if ( hintFail ) {
 				gulp.start('_buildFail');
 			} else{
-				gulp.start('_build');
+				buildWithDev ? gulp.start('_buildWithDev') : gulp.start('_build') ;
 			}
 		}
 
@@ -702,7 +781,7 @@ gulp.task('jshint', function(){
 	});
 
 	gulp.src(taskConfig.jshint.src)
-		.pipe(jshint())
+		.pipe(jshint(jshintConfig))
 		.pipe(bakariReporter)
 		.pipe(jshint.reporter('jshint-stylish'));
 
@@ -762,8 +841,15 @@ taskConfig.watch = {
 	src : null
 };
 gulp.task('watch', function(){
+
+	needLibs('livereload', 'gulp-livereload');
+	livereload.listen();
 	
 	helper.log('watching', taskConfig.watch.src.join('\n'));
+
+	if ( buildWithDev === null ) {
+		buildWithDev = true;
+	}
 
 	gulp.watch(taskConfig.watch.src)
 	.on('change', function(data){
@@ -777,6 +863,7 @@ gulp.task('watch', function(){
 
 			helper.buildPageJs(pageid).done(function(){
 				helper.buildJsList(childList).done(function(){
+					livereload.changed(data);
 					helper.log('watching...');
 				});
 			});
@@ -812,7 +899,7 @@ gulp.task('version', function(){
 	// get src version
 	_.each( taskConfig.version.pageId, function(v){
 		
-		var fileSrc = helper.getBizConfig( v ).path,
+		var fileSrc = project.rootPath + builder.jsPath + builder.jsDir.pro + '/' + v + '.js',
 			md5Str = '';
 		
 		if ( grunt.file.exists(fileSrc) ) {
@@ -837,6 +924,12 @@ gulp.task('build', ['_beforeBuild', 'jshint']);
 // _build private task
 gulp.task('_build', ['concat', 'uglify', 'version', '_buildDone']);
 
+// buildWithDev task
+gulp.task('buildWithDev', ['_beforeBuild', 'jshint']);
+
+// buildWithDev
+gulp.task('_buildWithDev', ['concat', '_buildDone']);
+
 
 // ==================================================
 // command
@@ -851,6 +944,8 @@ var commandDone = function(){
 
 // init @early
 cli.init = function(){
+
+	needLibs('inquirer', 'inquirer');
 		
 	var promise = Promise();
 	promise.done(function(){
@@ -1200,6 +1295,8 @@ program
 // addbiz @early
 cli.addbiz = function( page ){
 
+	needLibs('inquirer', 'inquirer');
+
 	var promise = Promise(),
 		pageId = helper.dashToHump(page),
 		hasLibs = [],
@@ -1325,6 +1422,8 @@ program
 
 // setbiz
 cli.setbiz = function( pageid ){
+
+	needLibs('inquirer', 'inquirer');
 	
 	var promise = Promise(),
 		config = helper.getBizConfig( pageid ),
@@ -1421,10 +1520,29 @@ cli.setbiz = function( pageid ){
 		// make file
 		grunt.file.write( src, file );
 
-		// if page id cahnge, delete old file
+		// if page id change, delete old file
 		if ( answers.pageId !== config.pageId &&
 			 grunt.file.exists( config.path ) ) {
 			grunt.file.delete( config.path );
+		}
+
+		// if page id change
+		if ( answers.pageId !== config.pageId ) {
+
+			// delete old dev and pro file
+			grunt.file.delete( project.rootPath + builder.jsPath + builder.jsDir.dev + '/' + config.pageId + '.js' );
+			grunt.file.delete( project.rootPath + builder.jsPath + builder.jsDir.pro + '/' + config.pageId + '.js' );
+
+			// delete .version old pageid info
+			var proVersion,
+				proVersionSrc = project.rootPath + builder.jsPath + builder.jsDir.proVersion;
+
+			if ( grunt.file.exists( proVersionSrc ) ) {
+				proVersion = grunt.file.readJSON( proVersionSrc );
+				delete proVersion[config.pageId];
+				grunt.file.write( proVersionSrc, JSON.stringify(proVersion) );
+			}
+
 		}
 
 		// get libs
@@ -1458,7 +1576,17 @@ cli.setbiz = function( pageid ){
 		// save config
 		grunt.file.write( helper.getBizConfigPath(answers.pageId), JSON.stringify(biz) );
 
-		promise.resolve();
+		// clean cache
+		delete cache.bizConfig[answers.pageId];
+
+		// rebuild
+		var childList = helper.getChildPageId( answers.pageId );
+
+		helper.buildPageJs(answers.pageId).done(function(){
+			helper.buildJsList(childList).done(function(){
+				promise.resolve();
+			});
+		});
 
 	});
 	
@@ -1474,6 +1602,8 @@ program
 
 // rmbiz
 cli.rmbiz = function( pageid ){
+
+	needLibs('inquirer', 'inquirer');
 	
 	var promise = Promise();
 
@@ -1556,8 +1686,8 @@ program
 	.action(cli.bizlist);
 
 
-// seebiz
-cli.seebiz = function( pageid ){
+// bizinfo
+cli.bizinfo = function( pageid ){
 	
 	var promise = Promise(),
 		detail = helper.getBizConfig(pageid);
@@ -1582,18 +1712,32 @@ cli.seebiz = function( pageid ){
 		
 	});
 
+	// show child page
+	var childList = helper.getChildPageId( pageid );
+	if ( childList.length > 0 ) {
+		console.log( 'child : '+childList.join(' | '));
+	}
+
+	// show parent page
+	var parentList = helper.getParentPageId( pageid );
+	if ( parentList.length > 0 ) {
+		console.log( 'parent : '+parentList.join(' ➟ '));
+	}
+
 	promise.done(commandDone).resolve();
 	return promise;
 
 };
 program
-	.command('seebiz')
+	.command('bizinfo')
 	.description('show biz detail')
-	.action(cli.seebiz);
+	.action(cli.bizinfo);
 
 
 // cleanbiz
 cli.cleanbiz = function(){
+
+	needLibs('inquirer', 'inquirer');
 	
 	var promise = Promise(),
 		excessPromise = Promise(),
@@ -1744,6 +1888,11 @@ cli.dev = function(){
 	
 	var promise = Promise();
 
+	// set buildWithDev default value
+	if ( arguments[0].parent.completeBuild ) {
+		buildWithDev = false;
+	}
+
 	taskConfig.watch.src = [
 		project.rootPath + builder.jsPath + builder.jsDir.src + '/**/*'
 	];
@@ -1871,6 +2020,8 @@ if ( grunt.file.exists(versionSrc) ) {
 program.option('-v, --use-version <version>', 'specify a version');
 // program.option('-e, --env', 'set development(dev) or production(pro) environment');
 program.option('-t, --timing', 'uptime statistics');
+program.option('-c, --complete-build', 'development env complete build files, this option just for dev');
+
 
 // ==================================================
 // program
@@ -1881,13 +2032,18 @@ program.parse(process.argv);
 
 // check null command
 var nullCommand = true;
-_.each(process.argv, function(v,k){
+for ( var k in process.argv ) {
+
+	var v = process.argv[k];
+	k = +k;
+
 	if ( k !== 0 &&
 		 k !== 1 &&
 		 v.search('-') !== 0 ) {
 		nullCommand = false;
 	}
-});
+
+}
 
 if ( nullCommand ) {
 	commandDone();
