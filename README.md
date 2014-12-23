@@ -41,6 +41,8 @@ bakari-builder
 - `-h` or `-help` 查看帮助
 - `-V` or `--version` 查看bakari-builder版本
 - `-v` or `--use-version` 为当前命令指定一个版本
+- `-t` or `--timing` 统计当前命令执行的时间
+- `-c` or `--complete-build` 需要进行完整的构建，处在开发模式时(`bakari dev`)，bakari默认不会生成生产环境文件及版本信息。启用这个选项后，bakari在任何情况下都将进行完整的代码构建(包含生产环境文件及版本信息)。
 
 
 ##Commands
@@ -54,7 +56,7 @@ bakari-builder
 
 `addlib <lib>` : 添加一个库到项目中。
 
-`rmlib <lib>` : 从项目中移除一个库。
+`rmlib <lib>` : 从项目中移除一个库。移除库时bakari会检查是否有业务依赖这个库，若有库无法被移除并会提示。
 
 `liblist` : 查看项目中包含的库。
 
@@ -69,11 +71,18 @@ bakari-builder
 
 `bizlist` : 查看所有的业务。
 
-`seebiz <pageid>` : 查看某个业务详情。
+`bizinfo <pageid>` : 查看某个业务详情，包含：
+
+- pageId : 页面id
+- path : 源文件路径
+- extendPage : 继承页面的id
+- libs : 依赖的库及版本
+- child : 所有的子页面
+- parent : 所有的祖先页面
 
 `cleanbiz` : 清理项目中的业务，根据项目业务配置，清除多余的业务js文件，同时补全缺失的js文件。
 
-`setbiz <pageid>` : 设置一个业务配置，修改业务的`page id`或`extend page id`，builder将自动修改文件名及文件中的继承关系。
+`setbiz <pageid>` : 设置一个业务配置，修改业务的`page id`或`extend page id`，builder将自动修改文件名及文件中的继承关系，并会重新构建开发环境、生产环境代码及版本信息。
 
 ###build
 
@@ -156,6 +165,18 @@ bakari的加载顺序为：
 2. json3
 3. md5
 
-###Liveload
+###Livereload
 
-TODO
+bakari通过[livereload](http://livereload.com/)支持浏览器自动刷新。
+
+当你处在开发环境时(`bakari dev`)，当源文件发生变化，bakari在代码构建完成后将自动刷新浏览器。
+
+安装livereload：
+
+- chrome : [livereload](https://chrome.google.com/webstore/detail/livereload/jnihajbhpnppcggbcgedagnkighmdlei?hl=zh-CN)
+- firefox : [livereload](https://addons.mozilla.org/zh-cn/firefox/addon/livereload/)
+- opera : [livereload](https://addons.opera.com/zh-cn/extensions/details/livereload-201-beta/?display=en)
+
+安装完成后，在需要自动刷新的页面上开启插件即可。
+
+更多的客户端及帮助，请[查看官方网站](http://livereload.com/)。
