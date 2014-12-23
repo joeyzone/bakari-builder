@@ -795,8 +795,8 @@ gulp.task('version', function(){
 
 	needLibs('MD5', 'MD5');
 	
-	if ( taskConfig.uglify.src === null ) {
-		helper.log('error', 'task version src is null');
+	if ( taskConfig.uglify.pageId === null ) {
+		helper.log('error', 'task version pageId is null');
 		return;
 	}
 
@@ -1757,6 +1757,51 @@ program
 	.command('dev')
 	.description('watch source file change and build file')
 	.action(cli.dev);
+
+// upversion
+cli.upversion = function( pageid ){
+	
+	var promise = Promise();
+	promise.done(function(){
+		helper.log('version update', pageid || '');
+	});
+
+	// if has pageid, build this pageid
+	if ( typeof pageid === 'string' ) {
+
+		taskConfig.version.pageId = [pageid];
+		gulp.start('version');
+		promise.resolve();
+
+	} else {
+
+		// if not pageid, version all
+		// each all pageid
+		var bizConfigSrc = project.rootPath + builder.bizConfig;
+		if ( grunt.file.exists(bizConfigSrc) ) {
+
+			var list = [];
+			grunt.file.recurse(bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				list.push(filename.replace(/\.json$/g,''));
+			});
+
+			taskConfig.version.pageId = list;
+			gulp.start('version');
+			promise.resolve();
+
+		}
+
+	}
+
+	promise.done(commandDone);
+	return promise;
+
+};
+program
+	.command('upversion')
+	.description('update production env version file')
+	.action(cli.upversion);
+
 
 
 // ==================================================
