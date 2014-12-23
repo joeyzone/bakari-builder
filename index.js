@@ -68,7 +68,7 @@ var builder = {
 	projectConfig : '/.bakari-builder/project.json',
 
 	// biz template
-	biztpl : '/.biztpl',
+	biztpl : '/.jsbiztpl',
 
 	jshintConfig : '/.jshintrc'
 
@@ -168,7 +168,9 @@ var cache = {
 
 	libConfig : {},
 
-	parentPageId : {}
+	parentPageId : {},
+
+	libChild : {}
 
 };
 
@@ -282,6 +284,39 @@ var helper = {
 		}
 		
 		return config;
+
+	},
+
+	// get rely lib of biz
+	getLibsChild : function( pkg, version ){
+		
+		var list = [];
+
+		// check cache
+		if ( cache.libChild[pkg+'@'+version] ) {
+
+			list = cache.libChild[pkg+'@'+version];
+
+		} else if ( grunt.file.exists( project.rootPath + builder.bizConfig ) ) {
+			
+			// each all biz config
+			grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+				
+				var config = grunt.file.readJSON(abspath);
+
+				_.each(config.libs, function(v){
+					if ( v.pkg === pkg && v.version === version ) {
+						list.push(config.pageId);
+					}
+				});
+
+			});
+
+			cache.libChild[pkg+'@'+version] = list;
+
+		}
+
+		return list;
 
 	},
 
@@ -593,6 +628,13 @@ var lib = {
 
 				num++;
 
+				// check libs rely
+				var libChild = helper.getLibsChild( v.pkg, v.version );
+				if ( libChild.length > 0 ) {
+					helper.log('error', 'some biz rely '+v.pkg+'@'+v.version+':\n'+libChild.join('\n'));
+					return;
+				}
+
 				bower.commands
 				.uninstall([v.dir], { save: true }, {})
 				.on('end', function(uninstall){
@@ -829,7 +871,7 @@ gulp.task('watch', function(){
 		}
 
 	});
-	
+
 });
 
 // version task
@@ -1478,10 +1520,29 @@ cli.setbiz = function( pageid ){
 		// make file
 		grunt.file.write( src, file );
 
-		// if page id cahnge, delete old file
+		// if page id change, delete old file
 		if ( answers.pageId !== config.pageId &&
 			 grunt.file.exists( config.path ) ) {
 			grunt.file.delete( config.path );
+		}
+
+		// if page id change
+		if ( answers.pageId !== config.pageId ) {
+
+			// delete old dev and pro file
+			grunt.file.delete( project.rootPath + builder.jsPath + builder.jsDir.dev + '/' + config.pageId + '.js' );
+			grunt.file.delete( project.rootPath + builder.jsPath + builder.jsDir.pro + '/' + config.pageId + '.js' );
+
+			// delete .version old pageid info
+			var proVersion,
+				proVersionSrc = project.rootPath + builder.jsPath + builder.jsDir.proVersion;
+
+			if ( grunt.file.exists( proVersionSrc ) ) {
+				proVersion = grunt.file.readJSON( proVersionSrc );
+				delete proVersion[config.pageId];
+				grunt.file.write( proVersionSrc, JSON.stringify(proVersion) );
+			}
+
 		}
 
 		// get libs
@@ -1515,7 +1576,17 @@ cli.setbiz = function( pageid ){
 		// save config
 		grunt.file.write( helper.getBizConfigPath(answers.pageId), JSON.stringify(biz) );
 
-		promise.resolve();
+		// clean cache
+		delete cache.bizConfig[answers.pageId];
+
+		// rebuild
+		var childList = helper.getChildPageId( answers.pageId );
+
+		helper.buildPageJs(answers.pageId).done(function(){
+			helper.buildJsList(childList).done(function(){
+				promise.resolve();
+			});
+		});
 
 	});
 	
@@ -1640,6 +1711,18 @@ cli.bizinfo = function( pageid ){
 		}
 		
 	});
+
+	// show child page
+	var childList = helper.getChildPageId( pageid );
+	if ( childList.length > 0 ) {
+		console.log( 'child : '+childList.join(' | '));
+	}
+
+	// show parent page
+	var parentList = helper.getParentPageId( pageid );
+	if ( parentList.length > 0 ) {
+		console.log( 'parent : '+parentList.join(' ➟ '));
+	}
 
 	promise.done(commandDone).resolve();
 	return promise;
