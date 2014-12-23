@@ -297,6 +297,77 @@ var helper = {
 
 		return find;
 
+	},
+
+	// build one page js file
+	buildPageJs : function( pageid ){
+		
+		// get config
+		var config = helper.getBizConfig( pageid );
+
+		// find src
+		var src = [], bizsrc = [], libsrc = [];
+
+		// set js file path
+		bizsrc.push( config.path );
+
+		// find all parent page
+		var parents = helper.getParentPageId( pageid );
+		_.each( parents, function(v){
+
+			var parnetConfig = helper.getBizConfig( v ),
+				path = parnetConfig.path;
+			if ( path ) {
+				bizsrc.push(path);
+			}
+
+			// get parent rely libs
+			_.each( parnetConfig.libs, function(plv){
+				libsrc.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + plv.dir + '/' + plv.main );
+			});
+
+		});
+
+		// set libs
+		_.each( config.libs, function(v){
+			libsrc.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + v.dir + '/' + v.main );
+		});
+
+		// reverse bizsrc
+		bizsrc.reverse();
+
+		// uniq libsrc & as late as possible to load lib
+		libsrc.reverse();
+		libsrc = _.uniq(libsrc);
+		libsrc.reverse();
+
+		// uniq libs
+		src = [].concat(libsrc).concat(bizsrc);
+		src = _.uniq(src);
+
+		// set task config
+		taskConfig.concat.src = src;
+		taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
+		taskConfig.concat.file = config.pageId+'.js';
+		taskConfig.uglify.src = src;
+		taskConfig.uglify.dest = project.rootPath + builder.jsPath + builder.jsDir.pro;
+		taskConfig.uglify.file = config.pageId+'.js';
+
+		// just hint biz code
+		taskConfig.jshint.src = bizsrc.reverse();
+
+		// report concat js file
+		_.each( src, function(v,k){
+			if ( k === 0 ) {
+				helper.log('┏ ', v);
+			} else {
+				helper.log('┣', v);
+			}
+		});
+
+		// run task
+		gulp.start('build');
+
 	}
 
 };
@@ -508,16 +579,47 @@ var cli = {};
 // ==================================================
 var taskConfig = {};
 
+// report task
+gulp.task('report', function(){
+	helper.log('┗', chalk.green('━➞ ' + taskConfig.concat.file.replace(/\.js$/g, '') + ' ') + taskConfig.concat.dest + '/' + taskConfig.concat.file );
+});
+
 // defautl task
-gulp.task('default', function(){
-	console.log('test!');
+gulp.task('default', function(){});
+
+// jshint task
+taskConfig.jshint = {
+	src : null
+};
+gulp.task('jshint', function(){
+	
+	needLibs('jshint', 'gulp-jshint');
+	needLibs('map', 'map-stream');
+
+	if ( taskConfig.jshint.src === null ) {
+		helper.log('error', 'task jshint src is null');
+		return;
+	}
+
+	var bakariReporter = map(function (file, cb) {
+		if (!file.jshint.success) {
+	  		helper.log('warning', 'jshint fail');
+	  	}
+	  	cb(null, file);
+	});
+
+	gulp.src(taskConfig.jshint.src)
+		.pipe(jshint())
+		.pipe(bakariReporter)
+		.pipe(jshint.reporter('jshint-stylish'));
+
 });
 
 // concat task
 taskConfig.concat = {
 	src : null,
 	dest : null,
-	file : null,
+	file : null
 };
 gulp.task('concat', function(){
 
@@ -531,17 +633,39 @@ gulp.task('concat', function(){
 	}
 	
 	gulp.src(taskConfig.concat.src)
-		.pipe(concat(taskConfig.concat.file))
+		.pipe(concat(taskConfig.concat.file, {newLine: ';'}))
         // .pipe(header(bakariHeader))
-        // .pipe(footer(bakariFooter))
-		// .pipe(jshint(false))
-		// .pipe(jshint.reporter('default'))
+        // .pipe(footer(';\n'))
 		.pipe(gulp.dest(taskConfig.concat.dest));
 
 });
 
+// uglify task
+taskConfig.uglify = {
+	src : null,
+	dest : null,
+	file : null
+};
+gulp.task('uglify', function(){
+	
+	needLibs('uglify', 'gulp-uglify');
+
+	if ( taskConfig.uglify.src === null ||
+		 taskConfig.uglify.dest === null ||
+		 taskConfig.uglify.file === null ) {
+		helper.log('error', 'task uglify src or dest or file is null');
+		return;
+	}
+	
+	gulp.src(taskConfig.uglify.src)
+		.pipe(concat(taskConfig.uglify.file))
+		.pipe(uglify())
+		.pipe(gulp.dest(taskConfig.uglify.dest));
+
+});
+
 // build task
-gulp.task('build', ['concat']);
+gulp.task('build', ['jshint', 'concat', 'uglify', 'report']);
 
 
 // ==================================================
@@ -947,19 +1071,12 @@ cli.addbiz = function( page ){
 			name : 'useLibs',
 			type : 'checkbox',
 			message : 'use lib:',
-			choices : hasLibs,
-			when : function(answers){
-				return answers.extendPage;
-			}
+			choices : hasLibs
 		},
 		{
 			name : 'note',
 			type : 'input',
-			message : 'page note:',
-			when : function(answers){
-				return answers.extendPage;
-			}
-
+			message : 'page note:'
 		}
 	], function( answers ) {
 
@@ -976,7 +1093,7 @@ cli.addbiz = function( page ){
 		}
 
 		// check extend page
-		if ( !helper.hasPageid( answers.extendPage ) ) {
+		if ( answers.extendPage !== false && !helper.hasPageid( answers.extendPage ) ) {
 			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
 			return;
 		}
@@ -987,7 +1104,11 @@ cli.addbiz = function( page ){
 
 		// render
 		file = file.replace(/\{\{pageId\}\}/g, answers.pageId);
-		file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		if ( answers.extendPage !== false ) {
+			file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		} else {
+			// TODO if extendPage is null, don't render extendPage
+		}
 
 		// make file
 		grunt.file.write( src, file );
@@ -1081,20 +1202,13 @@ cli.setbiz = function( pageid ){
 			type : 'checkbox',
 			message : 'use lib:',
 			choices : hasLibs,
-			default : libs,
-			when : function(answers){
-				return answers.extendPage;
-			}
+			default : libs
 		},
 		{
 			name : 'note',
 			type : 'input',
 			message : 'page note:',
 			default : config.note,
-			when : function(answers){
-				return answers.extendPage;
-			}
-
 		}
 	], function( answers ) {
 
@@ -1103,7 +1217,7 @@ cli.setbiz = function( pageid ){
 			src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
 
 		// check extend page
-		if ( !helper.hasPageid( answers.extendPage ) ) {
+		if ( answers.extendPage !== false && !helper.hasPageid( answers.extendPage ) ) {
 			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
 			return;
 		}
@@ -1128,7 +1242,11 @@ cli.setbiz = function( pageid ){
 
 		// render
 		file = file.replace(/\{\{pageId\}\}/g, answers.pageId);
-		file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		if ( answers.extendPage !== false ) {
+			file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		} else {
+			// TODO if extendPage is null, don't render extendPage
+		}
 
 		// make file
 		grunt.file.write( src, file );
@@ -1414,41 +1532,30 @@ cli.build = function( pageid ){
 
 	var promise = Promise();
 
+	promise.done(function(){
+		helper.log('build success');
+	});
+
 	// if has pageid, build this pageid
 	if ( typeof pageid === 'string' ) {
 
-		// get config
-		var config = helper.getBizConfig( pageid );
+		helper.buildPageJs(pageid);
 
-		// find src
-		var src = [];
+	} else {
 
-		// set js file path
-		src.push( config.path );
+		// if not pageid, build all
+		// each all pageid
+		var bizConfigSrc = project.rootPath + builder.bizConfig;
+		if ( grunt.file.exists(bizConfigSrc) ) {
 
-		// find all parent page
-		var parents = helper.getParentPageId( pageid );
-		_.each( parents, function(v){
-			var path = helper.getBizConfig( v ).path;
-			if ( path ) {
-				src.push(path);
-			}
-		});
+			grunt.file.recurse(bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				
+				pageid = filename.replace(/\.json$/g,'');
+				helper.buildPageJs(pageid);
 
-		// set libs
-		var libs = config.libs.reverse();
-		_.each( libs, function(v){
-			src.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + v.dir + '/' + v.main );
-		});
+			});
 
-		// set task config
-		taskConfig.concat.src = src.reverse();
-		taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
-		taskConfig.concat.file = config.pageId+'.js';
-
-		console.log( taskConfig );
-		// run task
-		gulp.start('build');
+		}
 
 	}
 
@@ -1494,7 +1601,6 @@ var updateScript = {
 		helper.log('update to', '0.0.5');
 
 	}
-
 
 };
 
