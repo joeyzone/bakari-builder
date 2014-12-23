@@ -1,6 +1,6 @@
 {
   "name": "bakari-builder",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "bakari builder",
   "main": "index.js",
   "scripts": {
@@ -14,7 +14,9 @@
     "bakari",
     "builder"
   ],
-  "author": "early",
+  "author": {
+    "name": "early"
+  },
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/EarlyH/bakari-builder/issues"
@@ -29,9 +31,25 @@
     "commander": "2.5.0",
     "shelljs": "0.3.0",
     "underscore": "1.7.0",
-    "extend": "2.0.0"
+    "extend": "2.0.0",
+    "bakari-promise": "0.0.3",
+    "gulp": "3.8.10",
+    "gulp-jshint": "1.9.0",
+    "gulp-concat": "2.4.2",
+    "gulp-uglify": "1.0.2",
+    "gulp-rename": "1.2.0",
+    "gulp-livereload": "3.0.2",
+    "gulp-header": "1.2.2",
+    "gulp-footer": "1.0.5",
+    "jshint-stylish": "1.0.0",
+    "map-stream": "0.0.5",
+    "MD5": "1.2.1"
   },
   "bin": {
     "bakari": "./index.js"
-  }
+  },
+  "readme": "bakari-builder\n==============\n\n##Install\n\n通过npm安装bakari-builder。\n\n\tnpm install －g bakari-builder\n\n##Usage\n\n执行命令，初始化一个项目：\n\n\n\t# 初始化一个项目\n\t$ bakari init\n\t\n\t# 为项目添加一个库\n\t$ bakari addlib jquery\n\t\n\t# 添加一个指定版本的库\n\t$ bakari addlib jquery -v 1.10.0\n\t\n\t# 查看当前项目中包含的库\n\t$ bakari liblist\n\n\t# 添加一个业务\n\t$ bakari addbiz commit/add\n\t\n## Flags\n- `-h` or `-help` 查看帮助\n- `-V` or `--version` 查看bakari-builder版本\n- `-v` or `--use-version` 为当前命令指定一个版本\n\n\n##Project Commands\n\n`init` \t: 初始化一个项目。\n\n`clean` : 清理一个项目，这个指令会根据项目配置文件，清除多余的代码，同时补全缺失的代码。\n\n##Lib Commands\n\n`addlib <lib>` : 添加一个库到项目中。\n\n`rmlib <lib>` : 从项目中移除一个库。\n\n`liblist` : 查看项目中包含的库。\n\n`cleanlib` : 清理项目中的库，根据项目配置文件，清除多余的库，同时补全缺失的库。\n\n\n##Biz Commands\n\n`addbiz <path>` : 添加一个业务到项目中，通过业务的路径bakari将自动生成pageId及继承关系。\n\n`rmbiz <pageid>` : 根据`page id`移除一个业务，移除前需要先移除所有子业务。\n\n`bizlist` : 查看所有的业务。\n\n`seebiz <pageid>` : 查看某个业务详情。\n\n`cleanbiz` : 清理项目中的业务，根据项目业务配置，清除多余的业务js文件，同时补全缺失的js文件。\n\n`setbiz <pageid>` : 设置一个业务配置，修改业务的`page id`或`extend page id`，builder将自动修改文件名及文件中的继承关系。\n\n##Code Build\n\nunder development",
+  "readmeFilename": "README.md",
+  "_id": "bakari-builder@0.0.3",
+  "_from": "bakari-builder@0.0.3"
 }

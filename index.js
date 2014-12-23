@@ -1,19 +1,43 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.2 @dev
+// bakariBuilder 0.0.5 @dev
 // ==================================================
 'use strict';
-var chalk = require('chalk');
-var inquirer = require('inquirer');
-var moment = require('moment');
-var program = require('commander');
-var shell = require('shelljs');
-var grunt = require('grunt');
-var bower = require('bower');
-var _ = require('underscore');
-var Promise = require('./lib/promise.js');
-var extend = require('extend');
-var resetBowerConfig = require('./node_modules/bower/lib/config').reset;
+var startTime = +new Date();
+var version = '0.0.5';
+var chalk = require('chalk'),
+	inquirer = require('inquirer'),
+	moment = require('moment'),
+	program = require('commander'),
+	shell = require('shelljs'),
+	grunt = require('grunt'),
+	bower = require('bower'),
+	_ = require('underscore'),
+	Promise = require('bakari-promise'),
+	extend = require('extend'),
+	resetBowerConfig = require('./node_modules/bower/lib/config').reset,
+	gulp = require('gulp');
+
+	// demand loading gulp libs
+	// concat = require('gulp-concat'),
+	// uglify = require('gulp-uglify'),
+	// jshint = require('gulp-jshint'),
+	// rename = require('gulp-rename'),
+	// livereload = require('gulp-livereload'),
+	// header = require('gulp-header'),
+	// footer = require('gulp-footer');
+
+// ==================================================
+// needLibs - demand loading libs
+// ==================================================
+var needLibs = function( name, libs ){
+	
+	if ( global[name] === undefined ) {
+		global[name] = require( libs || name );
+	}
+
+};
+
 
 // ==================================================
 // builder config
@@ -31,12 +55,17 @@ var builder = {
 
 		src : '/src',
 		lib : '/src/lib',
-		biz : '/src/biz'
+		biz : '/src/biz',
+
+		proVersion : '/pro/.version'
 
 	},
 
 	// bower config
 	bowerrcPath : '/.bowerrc',
+
+	// builder version file
+	versionFile : '/.bakari-builder/.version',
 
 	// builder config path
 	builderPath : '/.bakari-builder',
@@ -51,9 +80,10 @@ var builder = {
 	projectConfig : '/.bakari-builder/project.json',
 
 	// biz template
-	biztpl : '/.biztpl'
+	biztpl : '/.biztpl',
 
 };
+
 
 // ==================================================
 // project config
@@ -79,6 +109,30 @@ var project = {
 	libs : {}
 
 };
+
+
+// ==================================================
+// loading project
+// ==================================================
+// load project config
+if ( grunt.file.exists( shell.pwd() + builder.projectConfig ) ){
+	project = extend( true, project, grunt.file.readJSON( shell.pwd() + builder.projectConfig ) );
+}
+
+// load libs config
+if ( grunt.file.exists( shell.pwd() + builder.libConfig ) ) {
+
+	grunt.file.recurse( shell.pwd() + builder.libConfig, function(abspath, rootdir, subdir, filename){
+
+		if ( project.libs[subdir] === undefined ) {
+			project.libs[subdir] = {};
+		}
+
+		project.libs[subdir][filename.replace(/\.json$/,'')] = grunt.file.readJSON( abspath );
+		
+	});
+
+}
 
 // ==================================================
 // biz config
@@ -115,7 +169,13 @@ var bowerrc = {
 var helper = {
 
 	log : function( status, msg ){
+		
 		console.log( chalk.red('bakari ') + chalk.green(status.toLocaleUpperCase()+' ') + (msg || '') );
+
+		if ( status.toLowerCase() === 'error' ) {
+			commandDone();
+		}
+
 	},
 
 	// save project config
@@ -195,6 +255,64 @@ var helper = {
 
 	},
 
+	// get some lib config
+	getLibsConfig : function( pkg, version ){
+		
+		var config = {},
+			src = project.rootPath + builder.libConfig + '/' + pkg + '/' + version + '.json';
+		
+		if ( grunt.file.exists(src) ) {
+			config = grunt.file.readJSON(src);
+		}
+		
+		return config;
+
+	},
+
+	// get all parent page id
+	getParentPageId : function( pageid, list ){
+		
+		list = list || [];
+		var parent = helper.getBizConfig(pageid).extendPage;
+
+		if ( parent ) {
+			list.push( parent );
+			helper.getParentPageId( parent, list );
+		}
+
+		return list;
+
+	},
+
+	// get all child page id
+	getChildPageId : function( pageid, list ){
+		
+		list = list || [];
+
+		var addList = [];
+
+		if ( grunt.file.exists( project.rootPath + builder.bizConfig ) ) {
+			grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+				
+				var config = grunt.file.readJSON(abspath);
+
+				if ( config.extendPage === pageid ) {
+					addList.push(config.pageId);
+				}
+
+			});
+		}
+
+		list = list.concat(addList);
+
+		_.each(addList, function(v){
+			list = list.concat(helper.getChildPageId( v ));
+		});
+
+		return list;
+
+	},
+
 	// check some page id is exist
 	hasPageid : function( pageid ){
 		
@@ -210,10 +328,94 @@ var helper = {
 
 		return find;
 
+	},
+
+	// build one page js file
+	buildPageJs : function( pageid ){
+
+		var promise = Promise();
+		
+		// get config
+		var config = helper.getBizConfig( pageid );
+
+		// find src
+		var src = [], bizsrc = [], libsrc = [];
+
+		// set js file path
+		bizsrc.push( config.path );
+
+		// find all parent page
+		var parents = helper.getParentPageId( pageid );
+		_.each( parents, function(v){
+
+			var parnetConfig = helper.getBizConfig( v ),
+				path = parnetConfig.path;
+			if ( path ) {
+				bizsrc.push(path);
+			}
+
+			// get parent rely libs
+			_.each( parnetConfig.libs, function(plv){
+				libsrc.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + plv.dir + '/' + plv.main );
+			});
+
+		});
+
+		// set libs
+		_.each( config.libs, function(v){
+			libsrc.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + v.dir + '/' + v.main );
+		});
+
+		// reverse bizsrc
+		bizsrc.reverse();
+
+		// uniq libsrc & as late as possible to load lib
+		libsrc.reverse();
+		libsrc = _.uniq(libsrc);
+		libsrc.reverse();
+
+		// uniq libs
+		src = [].concat(libsrc).concat(bizsrc);
+		src = _.uniq(src);
+
+		// set task config
+		taskConfig.concat.src = src;
+		taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
+		taskConfig.concat.file = config.pageId+'.js';
+		taskConfig.uglify.src = src;
+		taskConfig.uglify.dest = project.rootPath + builder.jsPath + builder.jsDir.pro;
+		taskConfig.uglify.file = config.pageId+'.js';
+
+		// just hint biz code
+		taskConfig.jshint.src = bizsrc;
+
+		// run task
+		gulp.start('build');
+
+		buildPromise = promise;
+		return promise;
+
+	},
+
+	// build js list
+	buildJsList : function( list ){
+		
+		var promise = Promise();
+		var builder = function(){
+			if ( list.length > 0 ) {
+				helper.buildPageJs( list.shift() ).done(builder);
+			} else {
+				promise.resolve();
+			}
+		};
+
+		builder();
+
+		return promise;
+
 	}
 
 };
-
 
 // ==================================================
 // lib function
@@ -249,6 +451,15 @@ var lib = {
 					promise.resolve( info );
 				}
 
+			})
+			.on('error', function(){
+
+				helper.log('error', v + ' : ' + error.details);
+
+				if ( !--num ) {
+					promise.resolve();
+				}
+
 			});
 
 		});
@@ -268,6 +479,12 @@ var lib = {
 		var promise = Promise(),
 			num = 0;
 
+		// if libs is null
+		if ( !libs ) {
+			promise.resolve();
+			return;
+		}
+
 		_.each(libs, function(lv){
 			_.each(lv, function(v,k){
 
@@ -284,24 +501,32 @@ var lib = {
 				})
 				.on('end', function(installed){
 
-					_.find(installed, function(){
+					_.find(installed, function( pkv ){
 
 						helper.log( cfg.note, v.pkg + '@' + v.version );
 
 						// set config
+						v.main = pkv.pkgMeta.main;
 						grunt.file.mkdir(project.rootPath + builder.libConfig + '/' + v.pkg);
 						grunt.file.write(project.rootPath + builder.libConfig + '/' + v.pkg + '/' + v.version + '.json', JSON.stringify(v));
 
-						if ( !--num ) {
-							promise.resolve();
-						}
 						return true;
 
 					});
-					
+
+					if ( !--num ) {
+						promise.resolve();
+					}
+
 				})
 				.on('error', function(error){
+
 					helper.log('error', v.pkg + '#' + v.version + ' : ' + error.details);
+
+					if ( !--num ) {
+						promise.resolve();
+					}
+
 				});
 
 			});
@@ -320,6 +545,12 @@ var lib = {
 
 		var promise = Promise(),
 			num = 0;
+
+		// if libs is null
+		if ( !libs ) {
+			promise.resolve();
+			return;
+		}
 
 		_.each(libs, function(lv){
 			_.each(lv, function(v,k){
@@ -355,12 +586,21 @@ var lib = {
 					} else {
 						helper.log( 'error', 'project not install ' + v.pkg );
 					}
+					
+					if ( !--num ) {
+						promise.resolve();
+					}
 
 				})
 				.on('error', function(error){
-					helper.log('error', v.pkg + '#' + v.version + ' : ' + error.details);
-				});
 
+					helper.log('error', v.pkg + '#' + v.version + ' : ' + error.details);
+					
+					if ( !--num ) {
+						promise.resolve();
+					}
+
+				});
 
 			});
 		});
@@ -378,28 +618,237 @@ var lib = {
 
 var cli = {};
 
-// ==================================================
-// loading project
-// ==================================================
-// load project config
-if ( grunt.file.exists( shell.pwd() + builder.projectConfig ) ){
-	project = extend( true, project, grunt.file.readJSON( shell.pwd() + builder.projectConfig ) );
-}
 
-// load libs config
-grunt.file.recurse( shell.pwd() + builder.libConfig, function(abspath, rootdir, subdir, filename){
+// ==================================================
+// gulp task
+// ==================================================
+var taskConfig = {},
+	buildPromise;
 
-	if ( project.libs[subdir] === undefined ) {
-		project.libs[subdir] = {};
+// beforeBuild private task
+gulp.task('_beforeBuild', function(){
+
+	// report concat files
+	_.each( taskConfig.concat.src, function(v,k){
+		
+		if ( k === 0 ) {
+			helper.log('┏', v);
+		} else {
+			helper.log('┣', v);
+		}
+
+	});
+
+	// set version pageid
+	taskConfig.version.pageId = [ taskConfig.concat.file.replace(/\.js$/g,'') ];
+
+});
+
+// buildDone private task
+gulp.task('_buildDone', function(){
+
+	helper.log('┗', chalk.green('━➞ ' + taskConfig.concat.file.replace(/\.js$/g, '') + ' ') + taskConfig.concat.file );
+	helper.log('build success');
+	buildPromise.resolve();
+
+});
+
+// buildFail private task
+gulp.task('_buildFail', function(){
+	helper.log('┗', chalk.green('━➞ jshint fail') );
+	helper.log('build fail');
+	buildPromise.reject();
+});
+
+// defautl task
+gulp.task('default', function(){});
+
+// jshint task
+taskConfig.jshint = {
+	src : null
+};
+gulp.task('jshint', function(){
+	
+	needLibs('jshint', 'gulp-jshint');
+	needLibs('map', 'map-stream');
+
+	var srcLen = taskConfig.jshint.src.length,
+		index = 0,
+		hintFail = false;
+
+	if ( taskConfig.jshint.src === null ) {
+		helper.log('error', 'task jshint src is null');
+		return;
 	}
 
-	project.libs[subdir][filename.replace(/\.json$/,'')] = grunt.file.readJSON( abspath );
-	
+	var bakariReporter = map(function (file, cb) {
+
+		index++;
+
+		if (!file.jshint.success) {
+			hintFail = true;
+	  	}
+
+		if ( srcLen === index ) {
+			if ( hintFail ) {
+				gulp.start('_buildFail');
+			} else{
+				gulp.start('_build');
+			}
+		}
+
+	  	cb(null, file);
+
+	});
+
+	gulp.src(taskConfig.jshint.src)
+		.pipe(jshint())
+		.pipe(bakariReporter)
+		.pipe(jshint.reporter('jshint-stylish'));
+
 });
+
+// concat task
+taskConfig.concat = {
+	src : null,
+	dest : null,
+	file : null
+};
+gulp.task('concat', function(){
+
+	needLibs('concat', 'gulp-concat');
+
+	if ( taskConfig.concat.src === null ||
+		 taskConfig.concat.dest === null ||
+		 taskConfig.concat.file === null ) {
+		helper.log('error', 'task concat src or dest or file is null');
+		return;
+	}
+	
+	gulp.src(taskConfig.concat.src)
+		.pipe(concat(taskConfig.concat.file, {newLine: ';'}))
+        // .pipe(header(bakariHeader))
+        // .pipe(footer(';\n'))
+		.pipe(gulp.dest(taskConfig.concat.dest));
+
+});
+
+// uglify task
+taskConfig.uglify = {
+	src : null,
+	dest : null,
+	file : null
+};
+gulp.task('uglify', function(){
+	
+	needLibs('uglify', 'gulp-uglify');
+
+	if ( taskConfig.uglify.src === null ||
+		 taskConfig.uglify.dest === null ||
+		 taskConfig.uglify.file === null ) {
+		helper.log('error', 'task uglify src or dest or file is null');
+		return;
+	}
+	
+	gulp.src(taskConfig.uglify.src)
+		.pipe(concat(taskConfig.uglify.file))
+		.pipe(uglify())
+		.pipe(gulp.dest(taskConfig.uglify.dest));
+
+});
+
+// watch task
+taskConfig.watch = {
+	src : null
+};
+gulp.task('watch', function(){
+	
+	helper.log('watching', taskConfig.watch.src.join('\n'));
+
+	gulp.watch(taskConfig.watch.src)
+	.on('change', function(data){
+
+		if ( data.type === 'changed' ) {
+
+			helper.log('changed', data.path);
+
+			var pageid = data.path.replace(/.+\/([a-zA-Z0-9]+?)\.js$/g, '$1'),
+				childList = helper.getChildPageId( pageid );
+
+			helper.buildPageJs(pageid).done(function(){
+				helper.buildJsList(childList).done(function(){
+					helper.log('watching...');
+				});
+			});
+
+		}
+
+	});
+
+});
+
+// version task
+taskConfig.version = {
+	pageId : null
+};
+gulp.task('version', function(){
+
+	needLibs('MD5', 'MD5');
+	
+	if ( taskConfig.uglify.pageId === null ) {
+		helper.log('error', 'task version pageId is null');
+		return;
+	}
+
+	// set pro version
+	// get version file
+	var proVersion = {},
+		proVersionSrc = project.rootPath + builder.jsPath + builder.jsDir.proVersion;
+
+	if ( grunt.file.exists( proVersionSrc ) ) {
+		proVersion = grunt.file.readJSON( proVersionSrc );
+	}
+
+	// get src version
+	_.each( taskConfig.version.pageId, function(v){
+		
+		var fileSrc = helper.getBizConfig( v ).path,
+			md5Str = '';
+		
+		if ( grunt.file.exists(fileSrc) ) {
+			md5Str = MD5( grunt.file.read(fileSrc) );
+		}
+
+		proVersion[v] = {
+			md5 : md5Str,
+			date : _.now()
+		};
+
+	});
+	
+	// save pro version
+	grunt.file.write( proVersionSrc, JSON.stringify(proVersion) );
+
+});
+
+// build task
+gulp.task('build', ['_beforeBuild', 'jshint']);
+
+// _build private task
+gulp.task('_build', ['concat', 'uglify', 'version', '_buildDone']);
+
 
 // ==================================================
 // command
 // ==================================================
+// command done
+var commandDone = function(){
+	if ( program.timing ) {
+		var runTime = +new Date() - +startTime;
+		helper.log('runtime', runTime+'ms');
+	}
+};
+
 // init @early
 cli.init = function(){
 		
@@ -450,6 +899,7 @@ cli.init = function(){
 				'js-base64',
 				'jquery.cookie'
 			],
+			default : _.keys(project.libs),
 			when : function(answers){
 				return answers.jsPath;
 			}
@@ -510,7 +960,8 @@ cli.init = function(){
 		}
 
 	});
-
+	
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -524,7 +975,7 @@ cli.clean = function(){
 	
 	var promise = Promise();
 	promise.done(function(){
-		helper.log('cleared project');
+		helper.log('project cleared');
 	});
 	
 	// reset bowerrc
@@ -545,24 +996,31 @@ cli.clean = function(){
 
 	});
 
-
+	promise.done(commandDone);
 	return promise;
 
 };
 program
 	.command('clean')
 	.description('clean project')
-	.action(cli.clean);
+	.action(cli.clean)
 
 // test @early
 cli.test = function(){
-	helper.checkBizRely('seller');
+
+	var promise = Promise();
+
+	gulp.start('version');
 	helper.log('run test');
+
+	promise.done(commandDone).resolve();
+	return promise;
+
 };
 program
 	.command('test')
 	.description('just test builder')
-	.action(cli.test); 
+	.action(cli.test);
 
 // addlib @early
 cli.addlib = function(name){
@@ -605,10 +1063,15 @@ cli.addlib = function(name){
 			.done(function(){
 				promise.resolve();
 			})
-		});
+		})
+		.fail(function(){
+			helper.log('error', 'not found lib : '+name);
+			promise.resolve();
+		})
 
 	}
 
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -663,6 +1126,7 @@ cli.rmlib = function(name){
 
 	}
 
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -675,6 +1139,9 @@ program
 cli.cleanlib = function(){
 
 	var promise = Promise();
+	promise.done(function(){
+		helper.log('lib cleared');
+	});
 
 	// reset libs
 	var jsLibPath = project.rootPath + project.jsPath + builder.jsDir.lib;
@@ -690,6 +1157,7 @@ cli.cleanlib = function(){
 		promise.resolve();
 	});
 
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -720,7 +1188,7 @@ cli.liblist = function(){
 		}
 	});
 
-	promise.resolve();
+	promise.done(commandDone).resolve();
 	return promise;
 
 };
@@ -773,19 +1241,12 @@ cli.addbiz = function( page ){
 			name : 'useLibs',
 			type : 'checkbox',
 			message : 'use lib:',
-			choices : hasLibs,
-			when : function(answers){
-				return answers.extendPage;
-			}
+			choices : hasLibs
 		},
 		{
 			name : 'note',
 			type : 'input',
-			message : 'page note:',
-			when : function(answers){
-				return answers.extendPage;
-			}
-
+			message : 'page note:'
 		}
 	], function( answers ) {
 
@@ -802,7 +1263,7 @@ cli.addbiz = function( page ){
 		}
 
 		// check extend page
-		if ( !helper.hasPageid( answers.extendPage ) ) {
+		if ( answers.extendPage !== false && !helper.hasPageid( answers.extendPage ) ) {
 			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
 			return;
 		}
@@ -813,7 +1274,11 @@ cli.addbiz = function( page ){
 
 		// render
 		file = file.replace(/\{\{pageId\}\}/g, answers.pageId);
-		file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		if ( answers.extendPage !== false ) {
+			file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		} else {
+			// TODO if extendPage is null, don't render extendPage
+		}
 
 		// make file
 		grunt.file.write( src, file );
@@ -822,11 +1287,13 @@ cli.addbiz = function( page ){
 		var libs = [];
 		_.each( answers.useLibs, function(v,k){
 			
-			var str = v.split('@');
+			var str = v.split('@'),
+			 	lib = helper.getLibsConfig( str[0], str[1] );
 			libs.push({
 				pkg : str[0],
 				version : str[1],
-				dir : str[0]+'-'+str[1]
+				dir : str[0]+'-'+str[1],
+				main : lib.main
 			});
 
 		});
@@ -845,7 +1312,8 @@ cli.addbiz = function( page ){
 		promise.resolve();
 		
 	});
-
+	
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -904,20 +1372,13 @@ cli.setbiz = function( pageid ){
 			type : 'checkbox',
 			message : 'use lib:',
 			choices : hasLibs,
-			default : libs,
-			when : function(answers){
-				return answers.extendPage;
-			}
+			default : libs
 		},
 		{
 			name : 'note',
 			type : 'input',
 			message : 'page note:',
 			default : config.note,
-			when : function(answers){
-				return answers.extendPage;
-			}
-
 		}
 	], function( answers ) {
 
@@ -926,7 +1387,7 @@ cli.setbiz = function( pageid ){
 			src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
 
 		// check extend page
-		if ( !helper.hasPageid( answers.extendPage ) ) {
+		if ( answers.extendPage !== false && !helper.hasPageid( answers.extendPage ) ) {
 			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
 			return;
 		}
@@ -951,7 +1412,11 @@ cli.setbiz = function( pageid ){
 
 		// render
 		file = file.replace(/\{\{pageId\}\}/g, answers.pageId);
-		file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		if ( answers.extendPage !== false ) {
+			file = file.replace(/\{\{extendPage\}\}/g, answers.extendPage);
+		} else {
+			// TODO if extendPage is null, don't render extendPage
+		}
 
 		// make file
 		grunt.file.write( src, file );
@@ -966,11 +1431,13 @@ cli.setbiz = function( pageid ){
 		var libs = [];
 		_.each( answers.useLibs, function(v,k){
 			
-			var str = v.split('@');
+			var str = v.split('@'),
+			 	lib = helper.getLibsConfig( str[0], str[1] );
 			libs.push({
 				pkg : str[0],
 				version : str[1],
-				dir : str[0]+'-'+str[1]
+				dir : str[0]+'-'+str[1],
+				main : lib.main
 			});
 
 		});
@@ -981,12 +1448,12 @@ cli.setbiz = function( pageid ){
 		}
 
 		// make config
-		var biz = extend( true, config, {
+		var biz = {
 			pageId : answers.pageId,
 			path : src,
 			extendPage : answers.extendPage,
 			libs : libs
-		});
+		};
 
 		// save config
 		grunt.file.write( helper.getBizConfigPath(answers.pageId), JSON.stringify(biz) );
@@ -994,7 +1461,8 @@ cli.setbiz = function( pageid ){
 		promise.resolve();
 
 	});
-
+	
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -1047,6 +1515,7 @@ cli.rmbiz = function( pageid ){
 
 	});
 
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -1077,6 +1546,7 @@ cli.bizlist = function(){
 		}
 	});
 
+	promise.done(commandDone).resolve();
 	return promise;
 
 };
@@ -1112,6 +1582,7 @@ cli.seebiz = function( pageid ){
 		
 	});
 
+	promise.done(commandDone).resolve();
 	return promise;
 
 };
@@ -1216,6 +1687,7 @@ cli.cleanbiz = function(){
 
 	});
 
+	promise.done(commandDone);
 	return promise;
 
 };
@@ -1225,13 +1697,198 @@ program
 	.action(cli.cleanbiz);
 
 
+// build
+cli.build = function( pageid ){
+
+	var promise = Promise();
+
+	// if has pageid, build this pageid
+	if ( typeof pageid === 'string' ) {
+
+		helper.buildPageJs(pageid).done(function(){
+			promise.resolve();
+		});
+
+	} else {
+
+		// if not pageid, build all
+		// each all pageid
+		var bizConfigSrc = project.rootPath + builder.bizConfig;
+		if ( grunt.file.exists(bizConfigSrc) ) {
+
+			var list = [];
+			grunt.file.recurse(bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				pageid = filename.replace(/\.json$/g,'');
+				list.push(pageid);
+			});
+
+			helper.buildJsList(list).done(function(){
+				promise.resolve();
+			});
+
+		}
+
+	}
+
+	promise.done(commandDone);
+	return promise;
+
+};
+program
+	.command('build')
+	.description('build development and production file')
+	.action(cli.build);
+
+// dev
+cli.dev = function(){
+	
+	var promise = Promise();
+
+	taskConfig.watch.src = [
+		project.rootPath + builder.jsPath + builder.jsDir.src + '/**/*'
+	];
+	gulp.start('watch');
+
+	promise.done(commandDone).resolve();
+	return promise;
+
+};
+program
+	.command('dev')
+	.description('watch source file change and build file')
+	.action(cli.dev);
+
+// upversion
+cli.upversion = function( pageid ){
+	
+	var promise = Promise();
+	promise.done(function(){
+		helper.log('version update');
+	});
+
+	// if has pageid, build this pageid
+	if ( typeof pageid === 'string' ) {
+
+		taskConfig.version.pageId = [pageid];
+		gulp.start('version');
+		promise.resolve();
+
+	} else {
+
+		// if not pageid, version all
+		// each all pageid
+		var bizConfigSrc = project.rootPath + builder.bizConfig;
+		if ( grunt.file.exists(bizConfigSrc) ) {
+
+			var list = [];
+			grunt.file.recurse(bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				list.push(filename.replace(/\.json$/g,''));
+			});
+
+			taskConfig.version.pageId = list;
+			gulp.start('version');
+			promise.resolve();
+
+		}
+
+	}
+
+	promise.done(commandDone);
+	return promise;
+
+};
+program
+	.command('upversion')
+	.description('update production env version file')
+	.action(cli.upversion);
+
+
+
+// ==================================================
+// set version & update
+// ==================================================
+var versionSrc = project.rootPath+builder.versionFile;
+
+var updateScript = {
+
+	// 0.0.3 -> 0.0.5
+	'0.0.5' : function(){
+
+		// get libs main
+		cli.cleanlib();
+		
+		// reset biz config, add libs main
+		var bizConfigSrc = project.rootPath + builder.bizConfig;
+		if ( grunt.file.exists( bizConfigSrc ) ) {
+			grunt.file.recurse( bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				
+				var biz = grunt.file.readJSON(abspath);
+
+				_.each( biz.libs, function( lv ){
+					lv.main = helper.getLibsConfig( lv.pkg, lv.version ).main || '';
+				});
+
+				grunt.file.write( abspath, JSON.stringify(biz) );
+
+			});
+		}
+
+		helper.log('update to', '0.0.5');
+
+	}
+
+};
+
+if ( grunt.file.exists(versionSrc) ) {
+
+	// check version, if version update, run update script
+	var nowVerion = grunt.file.read(versionSrc);
+	if ( version > nowVerion ) {
+
+		helper.log('updating', 'plase wait...');
+		_.each( updateScript, function(v,k){
+			if ( k > nowVerion && k <= version ) {
+				v();
+			}
+		});
+
+		// reset version
+		grunt.file.write( versionSrc, version);
+
+	}
+
+} else {
+	
+	// if not version file, create it
+	grunt.file.write( versionSrc, version);
+
+}
+
+
 // ==================================================
 // option
 // ==================================================
 program.option('-v, --use-version <version>', 'specify a version');
+// program.option('-e, --env', 'set development(dev) or production(pro) environment');
+program.option('-t, --timing', 'uptime statistics');
 
 // ==================================================
 // program
 // ==================================================
-program.version('0.0.1');
+program.version('0.0.5');
+program.command('*').description('').action(commandDone);
 program.parse(process.argv);
+
+// check null command
+var nullCommand = true;
+_.each(process.argv, function(v,k){
+	if ( k !== 0 &&
+		 k !== 1 &&
+		 v.search('-') !== 0 ) {
+		nullCommand = false;
+	}
+});
+
+if ( nullCommand ) {
+	commandDone();
+}
