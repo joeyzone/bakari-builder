@@ -1763,7 +1763,7 @@ cli.upversion = function( pageid ){
 	
 	var promise = Promise();
 	promise.done(function(){
-		helper.log('version update', pageid || '');
+		helper.log('version update');
 	});
 
 	// if has pageid, build this pageid
