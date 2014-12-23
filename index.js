@@ -799,6 +799,9 @@ taskConfig.watch = {
 	src : null
 };
 gulp.task('watch', function(){
+
+	needLibs('livereload', 'gulp-livereload');
+	livereload.listen();
 	
 	helper.log('watching', taskConfig.watch.src.join('\n'));
 
@@ -818,6 +821,7 @@ gulp.task('watch', function(){
 
 			helper.buildPageJs(pageid).done(function(){
 				helper.buildJsList(childList).done(function(){
+					livereload.changed(data);
 					helper.log('watching...');
 				});
 			});
@@ -825,7 +829,7 @@ gulp.task('watch', function(){
 		}
 
 	});
-
+	
 });
 
 // version task
