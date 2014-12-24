@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.6 @dev
+// bakariBuilder 0.0.7 @dev
 // ==================================================
 'use strict';
 var startTime = +new Date();
-var version = '0.0.6';
+var version = '0.0.7';
 var chalk = require('chalk'),
 	program = require('commander'),
 	shell = require('shelljs'),
@@ -133,9 +133,11 @@ if ( grunt.file.exists( pwd + builder.jshintConfig ) ) {
 }
 
 // load pkg data
-grunt.file.recurse( pwd + builder.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
-	pkg[filename.replace(/\.js$/,'')] = project.rootPath + builder.jsPath + builder.jsDir.pkg + '/' + filename;
-});
+if ( grunt.file.exists( pwd + builder.jsPath + builder.jsDir.pkg ) ) {
+	grunt.file.recurse( pwd + builder.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
+		pkg[filename.replace(/\.js$/,'')] = project.rootPath + builder.jsPath + builder.jsDir.pkg + '/' + filename;
+	});
+}
 
 // ==================================================
 // biz config
@@ -668,7 +670,7 @@ var lib = {
 							return true;
 
 						});
-						
+
 					}
 
 					if ( !--num ) {
@@ -1120,6 +1122,9 @@ cli.init = function(){
 		// make lib config dir
 		grunt.file.mkdir( project.rootPath+builder.libConfig );
 
+		// make biz config dir
+		grunt.file.mkdir( project.rootPath+builder.bizConfig );
+
 		// get project name
 		project.name = answers.projectName;
 
@@ -1474,6 +1479,10 @@ cli.addbiz = function( page ){
 			return;
 		}
 
+		if ( answers.extendPage === 'false' ) {
+			answers.extendPage = false;
+		}
+
 		// check extend page
 		if ( answers.extendPage !== false && !helper.hasPageid( answers.extendPage ) ) {
 			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
@@ -1607,6 +1616,10 @@ cli.setbiz = function( pageid ){
 		var file = '',
 			path = answers.pageId.split(/[A-Z]/g),
 			src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
+
+		if ( answers.extendPage === 'false' ) {
+			answers.extendPage = false;
+		}
 
 		// check extend page
 		if ( answers.extendPage !== false && !helper.hasPageid( answers.extendPage ) ) {
@@ -2146,7 +2159,7 @@ program.option('-c, --complete-build', 'development env complete build files, th
 // ==================================================
 // program
 // ==================================================
-program.version('0.0.6');
+program.version('0.0.7');
 program.command('*').description('').action(commandDone);
 program.parse(process.argv);
 
