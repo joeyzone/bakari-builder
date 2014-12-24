@@ -426,38 +426,68 @@ var helper = {
 
 		});
 
+		// reverse bizsrc
+		bizsrc.reverse();
+
+		// uniq bizsrc
+		bizsrc = _.uniq(bizsrc);
+
 		// set libs
 		_.each( config.libs, function(v){
 			libsrc.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + v.dir + '/' + v.main );
 		});
-
-		// reverse bizsrc
-		bizsrc.reverse();
 
 		// uniq libsrc & as late as possible to load lib
 		libsrc.reverse();
 		libsrc = _.uniq(libsrc);
 		libsrc.reverse();
 
-		// uniq libs
-		src = [].concat(libsrc).concat(bizsrc);
-		src = _.uniq(src);
-
-		// set task config
-		taskConfig.concat.src = src;
+		// set & hint biz src
+		bizBuildPromise = Promise();
+		libBuildPromise = Promise();
+		buildType = 'biz';
+		taskConfig.concat.src = bizsrc;
 		taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
 		taskConfig.concat.file = config.pageId+'.js';
-		taskConfig.uglify.src = src;
+		taskConfig.uglify.src = bizsrc;
 		taskConfig.uglify.dest = project.rootPath + builder.jsPath + builder.jsDir.pro;
 		taskConfig.uglify.file = config.pageId+'.js';
-
-		// just hint biz code
 		taskConfig.jshint.src = bizsrc;
-
-		// run task
+		// run biz task
 		buildWithDev ? gulp.start('buildWithDev') : gulp.start('build');
 
-		buildPromise = promise;
+		bizBuildPromise.done(function(){
+			
+			// set lib src
+			buildType = 'lib';
+			taskConfig.concat.src = libsrc;
+			taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
+			taskConfig.concat.file = config.pageId+'.lib.js';
+			taskConfig.uglify.src = libsrc;
+			taskConfig.uglify.dest = project.rootPath + builder.jsPath + builder.jsDir.pro;
+			taskConfig.uglify.file = config.pageId+'.lib.js';
+			taskConfig.jshint.src = [];
+
+			// run biz task
+			setTimeout(function(){
+				buildWithDev ? gulp.start('buildWithDev') : gulp.start('build');
+			});
+
+		});
+
+		bizBuildPromise.fail(function(){
+			promise.reject();
+		});
+
+		libBuildPromise.done(function(){
+			setTimeout(function(){
+				promise.resolve();
+			});
+		})
+		.fail(function(){
+			promise.reject();
+		});
+
 		return promise;
 
 	},
@@ -708,7 +738,9 @@ var cli = {};
 // gulp task
 // ==================================================
 var taskConfig = {},
-	buildPromise,
+	bizBuildPromise,
+	libBuildPromise,
+	buildType,
 	buildWithDev = null;
 
 // beforeBuild private task
@@ -725,8 +757,9 @@ gulp.task('_beforeBuild', function(){
 
 	});
 
-	// set version pageid
-	taskConfig.version.pageId = [ taskConfig.concat.file.replace(/\.js$/g,'') ];
+	// set version key
+	taskConfig.version.key = [ taskConfig.concat.file.replace(/\.js$/g,'') ];
+	// console.log(extend(true, {}, taskConfig));
 
 });
 
@@ -734,15 +767,24 @@ gulp.task('_beforeBuild', function(){
 gulp.task('_buildDone', function(){
 
 	helper.log('┗', chalk.green('━➞ ' + taskConfig.concat.file.replace(/\.js$/g, '') + ' ') + taskConfig.concat.file );
-	buildPromise.resolve();
-
+	
+	if ( buildType === 'lib' ) {
+		libBuildPromise.resolve();
+	} else if ( buildType === 'biz' ) {
+		bizBuildPromise.resolve();
+	}
+	
 });
 
 // buildFail private task
 gulp.task('_buildFail', function(){
 	helper.log('┗', chalk.green('━➞ jshint fail') );
 	helper.log('build fail');
-	buildPromise.reject();
+	if ( buildType === 'lib' ) {
+		libBuildPromise.reject();
+	} else if ( buildType === 'biz' ) {
+		bizBuildPromise.reject();
+	}
 });
 
 // defautl task
@@ -763,6 +805,12 @@ gulp.task('jshint', function(){
 
 	if ( taskConfig.jshint.src === null ) {
 		helper.log('error', 'task jshint src is null');
+		return;
+	}
+
+	// if src length is 0, don't hint
+	if ( taskConfig.jshint.src.length === 0 ) {
+		buildWithDev ? gulp.start('_buildWithDev') : gulp.start('_build') ;
 		return;
 	}
 
@@ -880,7 +928,7 @@ gulp.task('watch', function(){
 
 // version task
 taskConfig.version = {
-	pageId : null
+	key : null
 };
 gulp.task('version', function(){
 
@@ -901,7 +949,7 @@ gulp.task('version', function(){
 	}
 
 	// get src version
-	_.each( taskConfig.version.pageId, function(v){
+	_.each( taskConfig.version.key, function(v){
 		
 		var fileSrc = project.rootPath + builder.jsPath + builder.jsDir.pro + '/' + v + '.js',
 			md5Str = '';
@@ -926,6 +974,7 @@ gulp.task('version', function(){
 gulp.task('build', ['_beforeBuild', 'jshint']);
 
 // _build private task
+// TODO add version
 gulp.task('_build', ['concat', 'uglify', 'version', '_buildDone']);
 
 // buildWithDev task
@@ -1920,7 +1969,7 @@ cli.upversion = function( pageid ){
 	// if has pageid, build this pageid
 	if ( typeof pageid === 'string' ) {
 
-		taskConfig.version.pageId = [pageid];
+		taskConfig.version.key = [pageid];
 		gulp.start('version');
 		promise.resolve();
 
@@ -1936,7 +1985,7 @@ cli.upversion = function( pageid ){
 				list.push(filename.replace(/\.json$/g,''));
 			});
 
-			taskConfig.version.pageId = list;
+			taskConfig.version.key = list;
 			gulp.start('version');
 			promise.resolve();
 
