@@ -465,7 +465,10 @@ var helper = {
 	// build js list
 	buildJsList : function( list ){
 		
-		var promise = Promise();
+		var promise = Promise(),
+			len = list.length,
+			stime = _.now();
+
 		var builder = function(){
 			if ( list.length > 0 ) {
 				helper.buildPageJs( list.shift() ).done(builder);
@@ -475,6 +478,10 @@ var helper = {
 		};
 
 		builder();
+
+		promise.done(function(){
+			helper.log('build success', 'build ' + len + ' files in ' + (_.now() - stime) + 'ms');
+		});
 
 		return promise;
 
@@ -727,7 +734,6 @@ gulp.task('_beforeBuild', function(){
 gulp.task('_buildDone', function(){
 
 	helper.log('┗', chalk.green('━➞ ' + taskConfig.concat.file.replace(/\.js$/g, '') + ' ') + taskConfig.concat.file );
-	helper.log('build success');
 	buildPromise.resolve();
 
 });
@@ -861,11 +867,9 @@ gulp.task('watch', function(){
 			var pageid = data.path.replace(/.+\/([a-zA-Z0-9]+?)\.js$/g, '$1'),
 				childList = helper.getChildPageId( pageid );
 
-			helper.buildPageJs(pageid).done(function(){
-				helper.buildJsList(childList).done(function(){
-					livereload.changed(data);
-					helper.log('watching...');
-				});
+			helper.buildJsList([pageid].concat(childList)).done(function(){
+				livereload.changed(data);
+				helper.log('watching...');
 			});
 
 		}
@@ -1582,10 +1586,8 @@ cli.setbiz = function( pageid ){
 		// rebuild
 		var childList = helper.getChildPageId( answers.pageId );
 
-		helper.buildPageJs(answers.pageId).done(function(){
-			helper.buildJsList(childList).done(function(){
-				promise.resolve();
-			});
+		helper.buildJsList([answers.pageId].concat(childList)).done(function(){
+			promise.resolve();
 		});
 
 	});
@@ -1849,7 +1851,7 @@ cli.build = function( pageid ){
 	// if has pageid, build this pageid
 	if ( typeof pageid === 'string' ) {
 
-		helper.buildPageJs(pageid).done(function(){
+		helper.buildJsList([pageid]).done(function(){
 			promise.resolve();
 		});
 
