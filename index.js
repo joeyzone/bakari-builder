@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.5 @dev
+// bakariBuilder 0.0.6 @dev
 // ==================================================
 'use strict';
 var startTime = +new Date();
-var version = '0.0.5';
+var version = '0.0.6';
 var chalk = require('chalk'),
 	program = require('commander'),
 	shell = require('shelljs'),
@@ -43,11 +43,11 @@ var builder = {
 
 		src : '/src',
 		lib : '/src/lib',
-		biz : '/src/biz',
-
-		proVersion : '/pro/.version'
+		biz : '/src/biz'
 
 	},
+
+	proVersion : '/pro/.version',
 
 	// bower config
 	bowerrcPath : '/.bowerrc',
@@ -890,7 +890,7 @@ gulp.task('version', function(){
 	// set pro version
 	// get version file
 	var proVersion = {},
-		proVersionSrc = project.rootPath + builder.jsPath + builder.jsDir.proVersion;
+		proVersionSrc = project.rootPath + builder.jsPath + builder.proVersion;
 
 	if ( grunt.file.exists( proVersionSrc ) ) {
 		proVersion = grunt.file.readJSON( proVersionSrc );
@@ -954,12 +954,12 @@ cli.init = function(){
 	});
 
 	inquirer.prompt([
-		{
-			name : 'rootPath',
-			type : 'input',
-			message : 'project path:',
-			default : '.'
-		},
+		// {
+		// 	name : 'rootPath',
+		// 	type : 'input',
+		// 	message : 'project path:',
+		// 	default : '.'
+		// },
 		{
 			name : 'projectName',
 			type : 'input',
@@ -1009,7 +1009,7 @@ cli.init = function(){
 	], function( answers ) {
 
 		// get project root path
-		project.rootPath = answers.rootPath;
+		// project.rootPath = answers.rootPath;
 
 		// make dir
 		grunt.file.mkdir( project.rootPath+builder.builderPath );
@@ -1535,7 +1535,7 @@ cli.setbiz = function( pageid ){
 
 			// delete .version old pageid info
 			var proVersion,
-				proVersionSrc = project.rootPath + builder.jsPath + builder.jsDir.proVersion;
+				proVersionSrc = project.rootPath + builder.jsPath + builder.proVersion;
 
 			if ( grunt.file.exists( proVersionSrc ) ) {
 				proVersion = grunt.file.readJSON( proVersionSrc );
@@ -2026,7 +2026,7 @@ program.option('-c, --complete-build', 'development env complete build files, th
 // ==================================================
 // program
 // ==================================================
-program.version('0.0.5');
+program.version('0.0.6');
 program.command('*').description('').action(commandDone);
 program.parse(process.argv);
 
