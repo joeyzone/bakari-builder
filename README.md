@@ -52,9 +52,9 @@ bakari-builder
 
 `clean` : 清理一个项目，这个指令会根据项目配置文件，清除多余的代码，同时补全缺失的代码。
 
-###Lib
+###Library
 
-`addlib <lib>` : 添加一个库到项目中。
+`addlib <lib|local path>` : 添加一个库到项目中，你可以输入一个本地路径来添加自定义库。
 
 `rmlib <lib>` : 从项目中移除一个库。移除库时bakari会检查是否有业务依赖这个库，若有库无法被移除并会提示。
 
@@ -62,6 +62,15 @@ bakari-builder
 
 `cleanlib` : 清理项目中的库，根据项目配置文件，清除多余的库，同时补全缺失的库。
 
+###Package
+
+package区别lib，使用起来更为灵活，只需将文件放到`script/src/pkg/`目录下即可，文件名就是package的名称。
+
+一般与业务相关但不适用于继承关系的代码片段放在package中。
+
+在设置业务逻辑时可以选择需要加载的package。
+
+package管理松散，删除时不会检测依赖，也没有版本管理。
 
 ###Biz
 
@@ -86,7 +95,7 @@ bakari-builder
 
 ###build
 
-`build <pageid>` : 构建某个`pageid`的文件，会生成一份开发版本和生产版本。若`pageid`为空则会build所有文件，业务代码将会进行jshint检测，
+`build <pageid>` : 构建某个`pageid`的文件，会生成一份开发版本和生产版本。若`pageid`为空则会build所有文件，业务代码将会进行jshint检测。
 
 `dev` : 开发模式，将监控所有源文件，并自动build。
 
@@ -113,11 +122,18 @@ bakari-builder
 
 经过bakari构建的最终文件分为开发文件和生产文件，分别用于不同的环境。
 
+对于同一个`page id`bakari会生成两份文件分别存放业务逻辑和库，业务逻辑将会经常变动，而库则不会。
+
 开发文件只将代码进行合并，而生产文件会对代码进行压缩。
 
 两份文件分别位于`script/dev/`和`script/pro`，你可以对这两个目录进行配置(TODO)。
 
-文件的名字与`page id`相对应，如`page id`为`blogCommitAdd`，对应的文件为`script/dev/blogCommitAdd.js`和`script/pro/blogCommitAdd.js`。
+文件的名字与`page id`相对应，如`page id`为`blogCommitAdd`，对应的文件为:
+
+- script/dev/blogCommitAdd.js
+- script/dev/blogCommitAdd.lib.js
+- script/pro/blogCommitAdd.js
+- script/pro/blogCommitAdd.lib.js
 
 ##More
 ###Biz js file template
@@ -145,6 +161,12 @@ bakari将帮你管理模板中的变量，若使用`bakari setbiz commitAdd`命�
 ###Use new library
 
 当你也在业务中使用新的库时，请先使用`bakari addlib`命令将库添加至项目中，然后使用`bakari setbiz`或`bakari addbiz`时，即可选择新增的库。
+
+###Use custom library
+
+你可以通过`bakari addlib <local path>`的方式来为项目添加一个自定义库。
+
+自定义库的名称是js的文件名，自定义库版本号为`custom`。
 
 ###JSHint config
 
