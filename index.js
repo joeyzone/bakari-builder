@@ -43,7 +43,8 @@ var builder = {
 
 		src : '/src',
 		lib : '/src/lib',
-		biz : '/src/biz'
+		biz : '/src/biz',
+		pkg : '/src/pkg'
 
 	},
 
@@ -105,7 +106,8 @@ var project = {
 // loading data
 // ==================================================
 // load project config
-var pwd = shell.pwd();
+var pwd = shell.pwd(),
+	pkg = {};
 if ( grunt.file.exists( pwd + builder.projectConfig ) ){
 	project = extend( true, project, grunt.file.readJSON( pwd + builder.projectConfig ) );
 }
@@ -129,6 +131,11 @@ if ( grunt.file.exists( pwd + builder.libConfig ) ) {
 if ( grunt.file.exists( pwd + builder.jshintConfig ) ) {
 	var jshintConfig = grunt.file.readJSON( pwd + builder.jshintConfig );
 }
+
+// load pkg data
+grunt.file.recurse( pwd + builder.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
+	pkg[filename.replace(/\.js$/,'')] = project.rootPath + builder.jsPath + builder.jsDir.pkg + '/' + filename;
+});
 
 // ==================================================
 // biz config
@@ -404,7 +411,7 @@ var helper = {
 		var config = helper.getBizConfig( pageid );
 
 		// find src
-		var src = [], bizsrc = [], libsrc = [];
+		var src = [], bizsrc = [], libsrc = [], pkgsrc = [];
 
 		// set js file path
 		bizsrc.push( config.path );
@@ -426,11 +433,16 @@ var helper = {
 
 		});
 
-		// reverse bizsrc
+		// reverse bizsrc & uniq bizsrc
 		bizsrc.reverse();
-
-		// uniq bizsrc
 		bizsrc = _.uniq(bizsrc);
+
+		// get pkgsrc
+		_.each( config.pkgs, function(v){
+			pkgsrc.push( pkg[v] );
+		});
+
+		bizsrc = pkgsrc.concat( bizsrc );
 
 		// set libs
 		_.each( config.libs, function(v){
@@ -524,7 +536,7 @@ var helper = {
 // ==================================================
 var lib = {
 
-	// search package information by name
+	// search lib information by name
 	search : function( libs ){
 
 		needLibs('bower', 'bower');
@@ -536,6 +548,18 @@ var lib = {
 		_.each( libs, function(v,k){
 			
 			helper.log('search', v);
+
+			// if v is url or local path
+			if ( v.search('/') !== -1 ) {
+
+				info[v] = {};
+				info[v][0] = {
+					path : v,
+					custom : true
+				}
+				promise.resolve( info );
+				return;
+			}
 
 			bower.commands
 			.info(v)
@@ -549,7 +573,7 @@ var lib = {
 					dir : pkg + '-' + version,
 					version : version,
 					pkg : pkg
-				}
+				};
 
 				if ( !--num ) {
 					promise.resolve( info );
@@ -572,7 +596,7 @@ var lib = {
 
 	},
 
-	// install package
+	// install lib
 	install : function( libs, cfg ){
 
 		needLibs('bower', 'bower');
@@ -595,30 +619,57 @@ var lib = {
 			_.each(lv, function(v,k){
 
 				num++;
-			
-				var installName = v.dir+'='+v.pkg+'#'+v.version;
+				
+				var installName;
+				if ( v.custom ) {
+					installName = v.path;
+				} else {
+					installName = v.dir+'='+v.pkg+'#'+v.version;
+				}
+				
 
 				bower.commands
 				.install([installName], { save: true }, {})
 				.on('log', function( data ){
 					if ( data.level === 'info' && cfg.showGet  ) {
-						helper.log('get', v.pkg+'#'+v.version + ' : ' + data.message);
+						if ( v.custom ) {
+							helper.log('get', data.message);
+						} else {
+							helper.log('get', v.pkg+'#'+v.version + ' : ' + data.message);
+						}
 					}
 				})
 				.on('end', function(installed){
 
-					_.find(installed, function( pkv ){
+					if ( v.custom ) {
 
-						helper.log( cfg.note, v.pkg + '@' + v.version );
-
+						var name = v.path.replace(/^.+\/(.+?)\.js$/g, '$1');
+						helper.log( cfg.note, name + '@custom' );
 						// set config
-						v.main = pkv.pkgMeta.main;
-						grunt.file.mkdir(project.rootPath + builder.libConfig + '/' + v.pkg);
-						grunt.file.write(project.rootPath + builder.libConfig + '/' + v.pkg + '/' + v.version + '.json', JSON.stringify(v));
+						grunt.file.mkdir(project.rootPath + builder.libConfig + '/' + name);
+						grunt.file.write(project.rootPath + builder.libConfig + '/' + name + '/custom.json', JSON.stringify({
+							dir : name,
+							version : 'custom',
+							pkg : name,
+							main : 'index.js'
+						}));
 
-						return true;
+					} else {
 
-					});
+						_.find(installed, function( pkv ){
+
+							helper.log( cfg.note, v.pkg + '@' + v.version );
+
+							// set config
+							v.main = pkv.pkgMeta.main;
+							grunt.file.mkdir(project.rootPath + builder.libConfig + '/' + v.pkg);
+							grunt.file.write(project.rootPath + builder.libConfig + '/' + v.pkg + '/' + v.version + '.json', JSON.stringify(v));
+
+							return true;
+
+						});
+						
+					}
 
 					if ( !--num ) {
 						promise.resolve();
@@ -642,7 +693,7 @@ var lib = {
 
 	},
 
-	// uninstall package
+	// uninstall lib
 	uninstall : function( libs, cfg ){
 
 		needLibs('bower', 'bower');
@@ -724,7 +775,7 @@ var lib = {
 
 	},
 
-	// uninstall all package
+	// uninstall all lib
 	uninstallAll : function( cfg ){
 		// TODO
 	},
@@ -974,7 +1025,6 @@ gulp.task('version', function(){
 gulp.task('build', ['_beforeBuild', 'jshint']);
 
 // _build private task
-// TODO add version
 gulp.task('_build', ['concat', 'uglify', 'version', '_buildDone']);
 
 // buildWithDev task
@@ -1175,7 +1225,7 @@ cli.addlib = function(name){
 	
 	// check name
 	if ( typeof name !== 'string' ) {
-		helper.log('error', 'you must input a package name');
+		helper.log('error', 'you must input a lib name');
 		return;
 	}
 
@@ -1225,7 +1275,7 @@ cli.addlib = function(name){
 };
 program
 	.command('addlib')
-	.description('add a package for project')
+	.description('add a lib for project')
 	.action(cli.addlib); 
 
 // rmlib @early
@@ -1233,7 +1283,7 @@ cli.rmlib = function(name){
 
 	// check name
 	if ( typeof name !== 'string' ) {
-		helper.log('error', 'you must input a package name');
+		helper.log('error', 'you must input a lib name');
 		return;
 	}
 
@@ -1280,7 +1330,7 @@ cli.rmlib = function(name){
 };
 program
 	.command('rmlib')
-	.description('remove a package from project')
+	.description('remove a lib from project')
 	.action(cli.rmlib);
 
 // cleanlib @early
@@ -1342,13 +1392,19 @@ cli.liblist = function(){
 };
 program
 	.command('liblist')
-	.description('package info')
+	.description('lib info')
 	.action(cli.liblist);
 
 // addbiz @early
 cli.addbiz = function( page ){
 
 	needLibs('inquirer', 'inquirer');
+
+	// check page
+	if ( typeof page !== 'string' ) {
+		helper.log('error', 'you must input a biz path');
+		return;
+	}
 
 	var promise = Promise(),
 		pageId = helper.dashToHump(page),
@@ -1392,6 +1448,12 @@ cli.addbiz = function( page ){
 			type : 'checkbox',
 			message : 'use lib:',
 			choices : hasLibs
+		},
+		{
+			name : 'usePkg',
+			type : 'checkbox',
+			message : 'use package:',
+			choices : _.keys(pkg)
 		},
 		{
 			name : 'note',
@@ -1453,7 +1515,8 @@ cli.addbiz = function( page ){
 			pageId : pageId,
 			path : src,
 			extendPage : answers.extendPage,
-			libs : libs
+			libs : libs,
+			pkgs : answers.usePkg
 		});
 
 		// save config
@@ -1525,6 +1588,13 @@ cli.setbiz = function( pageid ){
 			message : 'use lib:',
 			choices : hasLibs,
 			default : libs
+		},
+		{
+			name : 'usePkg',
+			type : 'checkbox',
+			message : 'use package:',
+			choices : _.keys(pkg),
+			default : config.pkgs
 		},
 		{
 			name : 'note',
@@ -1623,7 +1693,8 @@ cli.setbiz = function( pageid ){
 			pageId : answers.pageId,
 			path : src,
 			extendPage : answers.extendPage,
-			libs : libs
+			libs : libs,
+			pkgs : answers.usePkg
 		};
 
 		// save config
@@ -2001,8 +2072,6 @@ program
 	.command('upversion')
 	.description('update production env version file')
 	.action(cli.upversion);
-
-
 
 // ==================================================
 // set version & update
