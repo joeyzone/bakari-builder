@@ -110,6 +110,7 @@ if ( grunt.file.exists( pwd + builder.projectConfig ) ){
 	project = extend( true, project, grunt.file.readJSON( pwd + builder.projectConfig ) );
 }
 
+
 // ==================================================
 // helper
 // ==================================================
@@ -166,6 +167,7 @@ var helper = {
 
 		var rely = [];
 		grunt.file.recurse( project.rootPath+builder.bizConfig, function(abspath, rootdir, subdir, filename){
+			if ( filename === '.DS_Store' ) return;
 
 			var json = grunt.file.readJSON(abspath);
 
@@ -237,6 +239,7 @@ var helper = {
 			
 			// each all biz config
 			grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+				if ( filename === '.DS_Store' ) return;
 				
 				var config = grunt.file.readJSON(abspath);
 
@@ -294,6 +297,7 @@ var helper = {
 
 		if ( grunt.file.exists( project.rootPath + builder.bizConfig ) ) {
 			grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+				if ( filename === '.DS_Store' ) return;
 				
 				var config = grunt.file.readJSON(abspath);
 
@@ -319,6 +323,7 @@ var helper = {
 		
 		var find = false;
 		grunt.file.recurse( project.rootPath+builder.bizConfig, function(abspath, rootdir, subdir, filename){
+			if ( filename === '.DS_Store' ) return;
 
 			var page = filename.replace(/\.json$/g, '');
 			if ( page === pageid ) {
@@ -451,7 +456,8 @@ var helper = {
 		builder();
 
 		promise.done(function(){
-			helper.log('build success', 'build ' + len + ' files in ' + (_.now() - stime) + 'ms');
+			// TODO *2 bcs lib&biz
+			helper.log('build success', 'build ' + len*2 + ' files in ' + (_.now() - stime) + 'ms');
 		});
 
 		return promise;
@@ -460,7 +466,6 @@ var helper = {
 
 };
 
-
 // ==================================================
 // loading data
 // ==================================================
@@ -468,6 +473,8 @@ var helper = {
 if ( grunt.file.exists( pwd + builder.libConfig ) ) {
 
 	grunt.file.recurse( pwd + builder.libConfig, function(abspath, rootdir, subdir, filename){
+
+		if ( filename === '.DS_Store' ) return;
 
 		if ( project.libs[subdir] === undefined ) {
 			project.libs[subdir] = {};
@@ -502,6 +509,7 @@ if ( grunt.file.exists( pwd + builder.uglifyConfig ) ) {
 // load pkg data
 if ( grunt.file.exists( pwd + project.jsPath + builder.jsDir.pkg ) ) {
 	grunt.file.recurse( pwd + project.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
+		if ( filename === '.DS_Store' ) return;
 		pkg[filename.replace(/\.js$/,'')] = project.rootPath + project.jsPath + builder.jsDir.pkg + '/' + filename;
 	});
 }
@@ -672,9 +680,10 @@ var lib = {
 
 				num++;
 				
-				var installName;
+				var installName, name;
 				if ( v.custom ) {
-					installName = v.path;
+					name = v.path.replace(/^.+\/(.+?)\.js$/g, '$1');
+					installName = name+'-custom='+v.path;
 				} else {
 					installName = v.dir+'='+v.pkg+'#'+v.version;
 				}
@@ -695,7 +704,6 @@ var lib = {
 
 					if ( v.custom ) {
 
-						var name = v.path.replace(/^.+\/(.+?)\.js$/g, '$1');
 						helper.log( cfg.note, name + '@custom' );
 						// set config
 						grunt.file.mkdir(project.rootPath + builder.libConfig + '/' + name);
@@ -794,6 +802,7 @@ var lib = {
 						}
 
 						grunt.file.recurse( libDir, function(abspath, rootdir, subdir, filename){
+							if ( filename === '.DS_Store' ) return;
 							libNum++;
 						});
 
@@ -1263,7 +1272,11 @@ cli.test = function(){
 
 	var promise = Promise();
 
-	gulp.start('version');
+	grunt.file.recurse('./application/views/screen/admin/', function(a,b,c,d){
+		if ( filename === '.DS_Store' ) return;
+		console.log('admin/'+c+'/'+d.replace(/\.php$/g,''));
+	});
+
 	helper.log('run test');
 
 	promise.done(commandDone).resolve();
@@ -1887,6 +1900,7 @@ cli.bizlist = function(){
 
 	// get all biz
 	grunt.file.recurse( project.rootPath+builder.bizConfig, function(abspath, rootdir, subdir, filename){
+		if ( filename === '.DS_Store' ) return;
 		list.push( helper.getBizConfig(filename.replace(/\.json$/g, '')) );
 	});
 
@@ -1975,6 +1989,7 @@ cli.cleanbiz = function(){
 
 	// get excess js files
 	grunt.file.recurse( bizSrc, function(abspath, rootdir, subdir, filename){
+		if ( filename === '.DS_Store' ) return;
 		
 		pageid = filename.replace(/\.js$/g, '');
 		parentId = pageid.split(/[A-Z]/g)[0];
@@ -2019,6 +2034,7 @@ cli.cleanbiz = function(){
 		
 		// add missing js files
 		grunt.file.recurse( project.rootPath + builder.bizConfig, function(abspath, rootdir, subdir, filename){
+			if ( filename === '.DS_Store' ) return;
 
 			var find = false;
 			pageid = filename.replace(/\.json$/g, '');
@@ -2088,6 +2104,7 @@ cli.build = function( pageid ){
 
 			var list = [];
 			grunt.file.recurse(bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				if ( filename === '.DS_Store' ) return;
 				pageid = filename.replace(/\.json$/g,'');
 				list.push(pageid);
 			});
@@ -2157,6 +2174,7 @@ cli.upversion = function( pageid ){
 
 			var list = [];
 			grunt.file.recurse(bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				if ( filename === '.DS_Store' ) return;
 				list.push(filename.replace(/\.json$/g,''));
 			});
 
@@ -2194,6 +2212,7 @@ var updateScript = {
 		var bizConfigSrc = project.rootPath + builder.bizConfig;
 		if ( grunt.file.exists( bizConfigSrc ) ) {
 			grunt.file.recurse( bizConfigSrc, function(abspath, rootdir, subdir, filename){
+				if ( filename === '.DS_Store' ) return;
 				
 				var biz = grunt.file.readJSON(abspath);
 
