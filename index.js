@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.7 @dev
+// bakariBuilder 0.0.8 @dev
 // ==================================================
 'use strict';
 var startTime = +new Date();
-var version = '0.0.7';
+var version = '0.0.8';
 var chalk = require('chalk'),
 	program = require('commander'),
 	shell = require('shelljs'),
@@ -2250,7 +2250,7 @@ program.option('-c, --complete-build', 'development env complete build files, th
 // ==================================================
 // program
 // ==================================================
-program.version('0.0.7');
+program.version('0.0.8');
 program.command('*').description('').action(commandDone);
 program.parse(process.argv);
 
