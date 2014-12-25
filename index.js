@@ -1505,6 +1505,12 @@ cli.addbiz = function( page ){
 		});
 	});
 
+	var defaultParent = pageId.replace(/[A-Z][a-z0-9_]+?$/g, '');
+
+	if ( defaultParent === pageId ) {
+		defaultParent = false;
+	}
+
 	inquirer.prompt([
 		{
 			name : 'checkPath',
@@ -1524,7 +1530,7 @@ cli.addbiz = function( page ){
 			name : 'extendPage',
 			type : 'input',
 			message : 'extend page id:',
-			default : pageId.replace(/[A-Z][a-z0-9_]+?$/g, ''),
+			default : defaultParent,
 			when : function(answers){
 				return answers.pageId;
 			}
