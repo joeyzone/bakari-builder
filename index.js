@@ -1966,7 +1966,8 @@ cli.cleanbiz = function(){
 		bizSrc = project.rootPath + builder.jsPath + builder.jsDir.biz,
 		excess = [],
 		hasFiles = [],
-		pageid;
+		pageid,
+		parentId;
 
 	promise.done(function(){
 		helper.log('cleared all biz js files');
@@ -1976,7 +1977,10 @@ cli.cleanbiz = function(){
 	grunt.file.recurse( bizSrc, function(abspath, rootdir, subdir, filename){
 		
 		pageid = filename.replace(/\.js$/g, '');
-		if ( !helper.hasPageid( pageid ) ) {
+		parentId = pageid.split(/[A-Z]/g)[0];
+
+		if ( !helper.hasPageid( pageid ) ||
+			 parentId !== subdir ) {
 			excess.push(abspath);
 		}
 		hasFiles.push(pageid);
