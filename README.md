@@ -62,6 +62,9 @@ bakari-builder
 
 `cleanlib` : 清理项目中的库，根据项目配置文件，清除多余的库，同时补全缺失的库。
 
+`search lib <keyword>` : 根据关键词搜索库。
+
+
 ###Package
 
 package区别lib，使用起来更为灵活，只需将文件放到`script/src/pkg/`目录下即可，文件名就是package的名称。
@@ -171,6 +174,10 @@ bakari将帮你管理模板中的变量，若使用`bakari setbiz commitAdd`命�
 ###JSHint config
 
 将jshint的配置写入项目根目录下的`.jshintrc`文件中，bakari将会读取并应用，更多配置查看[JSHint doc](http://jshint.com/docs/)。
+
+###Uglify config
+
+将uglify的配置写入项目根目录下的`.uglifyrc`文件中，bakari将会读取并应用，更多配置查看[uglify.js](http://lisperator.net/uglifyjs/)。
 
 ###Late load library
 

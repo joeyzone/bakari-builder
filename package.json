@@ -1,6 +1,6 @@
 {
   "name": "bakari-builder",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "bakari builder",
   "main": "index.js",
   "scripts": {
