@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.8 @dev
+// bakariBuilder 0.0.9 @dev
 // ==================================================
 'use strict';
 var startTime = +new Date();
-var version = '0.0.8';
+var version = '0.0.9';
 var chalk = require('chalk'),
 	program = require('commander'),
 	shell = require('shelljs'),
@@ -102,6 +102,13 @@ var project = {
 	libs : {}
 
 };
+
+// load project config
+var pwd = shell.pwd(),
+	pkg = {};
+if ( grunt.file.exists( pwd + builder.projectConfig ) ){
+	project = extend( true, project, grunt.file.readJSON( pwd + builder.projectConfig ) );
+}
 
 // ==================================================
 // helper
@@ -350,7 +357,7 @@ var helper = {
 
 			// get parent rely libs
 			_.each( parnetConfig.libs, function(plv){
-				libsrc.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + plv.dir + '/' + plv.main );
+				libsrc.push( project.rootPath + project.jsPath + builder.jsDir.lib + '/' + plv.dir + '/' + plv.main );
 			});
 
 		});
@@ -368,7 +375,7 @@ var helper = {
 
 		// set libs
 		_.each( config.libs, function(v){
-			libsrc.push( project.rootPath + builder.jsPath + builder.jsDir.lib + '/' + v.dir + '/' + v.main );
+			libsrc.push( project.rootPath + project.jsPath + builder.jsDir.lib + '/' + v.dir + '/' + v.main );
 		});
 
 		// uniq libsrc & as late as possible to load lib
@@ -381,10 +388,10 @@ var helper = {
 		libBuildPromise = Promise();
 		buildType = 'biz';
 		taskConfig.concat.src = bizsrc;
-		taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
+		taskConfig.concat.dest = project.rootPath + project.jsPath + builder.jsDir.dev;
 		taskConfig.concat.file = config.pageId+'.js';
 		taskConfig.uglify.src = bizsrc;
-		taskConfig.uglify.dest = project.rootPath + builder.jsPath + builder.jsDir.pro;
+		taskConfig.uglify.dest = project.rootPath + project.jsPath + builder.jsDir.pro;
 		taskConfig.uglify.file = config.pageId+'.js';
 		taskConfig.jshint.src = bizsrc;
 		// run biz task
@@ -395,10 +402,10 @@ var helper = {
 			// set lib src
 			buildType = 'lib';
 			taskConfig.concat.src = libsrc;
-			taskConfig.concat.dest = project.rootPath + builder.jsPath + builder.jsDir.dev;
+			taskConfig.concat.dest = project.rootPath + project.jsPath + builder.jsDir.dev;
 			taskConfig.concat.file = config.pageId+'.lib.js';
 			taskConfig.uglify.src = libsrc;
-			taskConfig.uglify.dest = project.rootPath + builder.jsPath + builder.jsDir.pro;
+			taskConfig.uglify.dest = project.rootPath + project.jsPath + builder.jsDir.pro;
 			taskConfig.uglify.file = config.pageId+'.lib.js';
 			taskConfig.jshint.src = [];
 
@@ -457,13 +464,6 @@ var helper = {
 // ==================================================
 // loading data
 // ==================================================
-// load project config
-var pwd = shell.pwd(),
-	pkg = {};
-if ( grunt.file.exists( pwd + builder.projectConfig ) ){
-	project = extend( true, project, grunt.file.readJSON( pwd + builder.projectConfig ) );
-}
-
 // load libs config
 if ( grunt.file.exists( pwd + builder.libConfig ) ) {
 
@@ -500,9 +500,9 @@ if ( grunt.file.exists( pwd + builder.uglifyConfig ) ) {
 }
 
 // load pkg data
-if ( grunt.file.exists( pwd + builder.jsPath + builder.jsDir.pkg ) ) {
-	grunt.file.recurse( pwd + builder.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
-		pkg[filename.replace(/\.js$/,'')] = project.rootPath + builder.jsPath + builder.jsDir.pkg + '/' + filename;
+if ( grunt.file.exists( pwd + project.jsPath + builder.jsDir.pkg ) ) {
+	grunt.file.recurse( pwd + project.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
+		pkg[filename.replace(/\.js$/,'')] = project.rootPath + project.jsPath + builder.jsDir.pkg + '/' + filename;
 	});
 }
 
@@ -1045,7 +1045,7 @@ gulp.task('version', function(){
 	// set pro version
 	// get version file
 	var proVersion = {},
-		proVersionSrc = project.rootPath + builder.jsPath + builder.proVersion;
+		proVersionSrc = project.rootPath + project.jsPath + builder.proVersion;
 
 	if ( grunt.file.exists( proVersionSrc ) ) {
 		proVersion = grunt.file.readJSON( proVersionSrc );
@@ -1054,7 +1054,7 @@ gulp.task('version', function(){
 	// get src version
 	_.each( taskConfig.version.key, function(v){
 		
-		var fileSrc = project.rootPath + builder.jsPath + builder.jsDir.pro + '/' + v + '.js',
+		var fileSrc = project.rootPath + project.jsPath + builder.jsDir.pro + '/' + v + '.js',
 			md5Str = '';
 		
 		if ( grunt.file.exists(fileSrc) ) {
@@ -1131,7 +1131,7 @@ cli.init = function(){
 			name : 'jsPath',
 			type : 'input',
 			message : 'javascript path:',
-			default : builder.jsPath,
+			default : project.jsPath,
 			when : function(answers){
 				return answers.initJs;
 			}
@@ -1179,7 +1179,7 @@ cli.init = function(){
 		project.name = answers.projectName;
 
 		// set project js path
-		project.jsPath = answers.jsPath || builder.jsPath;
+		project.jsPath = answers.jsPath || project.jsPath;
 
 		// set init js
 		project.initJs = answers.initJs;
@@ -1558,7 +1558,7 @@ cli.addbiz = function( page ){
 			helper.log('added', answers.pageId + '\t:\t' + src);
 		});
 
-		var src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
+		var src = project.rootPath+project.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
 
 		// check file exists
 		if ( grunt.file.exists( src ) ) {
@@ -1702,7 +1702,7 @@ cli.setbiz = function( pageid ){
 
 		var file = '',
 			path = answers.pageId.split(/[A-Z]/g),
-			src = project.rootPath+builder.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
+			src = project.rootPath+project.jsPath+builder.jsDir.biz+'/'+path[0]+'/'+answers.pageId+'.js';
 
 		if ( answers.extendPage === 'false' ) {
 			answers.extendPage = false;
@@ -1753,12 +1753,12 @@ cli.setbiz = function( pageid ){
 		if ( answers.pageId !== config.pageId ) {
 
 			// delete old dev and pro file
-			grunt.file.delete( project.rootPath + builder.jsPath + builder.jsDir.dev + '/' + config.pageId + '.js' );
-			grunt.file.delete( project.rootPath + builder.jsPath + builder.jsDir.pro + '/' + config.pageId + '.js' );
+			grunt.file.delete( project.rootPath + project.jsPath + builder.jsDir.dev + '/' + config.pageId + '.js' );
+			grunt.file.delete( project.rootPath + project.jsPath + builder.jsDir.pro + '/' + config.pageId + '.js' );
 
 			// delete .version old pageid info
 			var proVersion,
-				proVersionSrc = project.rootPath + builder.jsPath + builder.proVersion;
+				proVersionSrc = project.rootPath + project.jsPath + builder.proVersion;
 
 			if ( grunt.file.exists( proVersionSrc ) ) {
 				proVersion = grunt.file.readJSON( proVersionSrc );
@@ -1963,7 +1963,7 @@ cli.cleanbiz = function(){
 	
 	var promise = Promise(),
 		excessPromise = Promise(),
-		bizSrc = project.rootPath + builder.jsPath + builder.jsDir.biz,
+		bizSrc = project.rootPath + project.jsPath + builder.jsDir.biz,
 		excess = [],
 		hasFiles = [],
 		pageid,
@@ -2120,7 +2120,7 @@ cli.dev = function(){
 	}
 
 	taskConfig.watch.src = [
-		project.rootPath + builder.jsPath + builder.jsDir.src + '/**/*'
+		project.rootPath + project.jsPath + builder.jsDir.src + '/**/*'
 	];
 	gulp.start('watch');
 
@@ -2250,7 +2250,7 @@ program.option('-c, --complete-build', 'development env complete build files, th
 // ==================================================
 // program
 // ==================================================
-program.version('0.0.8');
+program.version('0.0.9');
 program.command('*').description('').action(commandDone);
 program.parse(process.argv);
 
