@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // ==================================================
-// bakariBuilder 0.0.6 @dev
+// bakariBuilder 0.0.7 @dev
 // ==================================================
 'use strict';
 var startTime = +new Date();
-var version = '0.0.6';
+var version = '0.0.7';
 var chalk = require('chalk'),
 	program = require('commander'),
 	shell = require('shelljs'),
@@ -71,7 +71,9 @@ var builder = {
 	// biz template
 	biztpl : '/.jsbiztpl',
 
-	jshintConfig : '/.jshintrc'
+	jshintConfig : '/.jshintrc',
+
+	uglifyConfig : '/.uglifyrc'
 
 };
 
@@ -101,88 +103,6 @@ var project = {
 
 };
 
-
-// ==================================================
-// loading data
-// ==================================================
-// load project config
-var pwd = shell.pwd(),
-	pkg = {};
-if ( grunt.file.exists( pwd + builder.projectConfig ) ){
-	project = extend( true, project, grunt.file.readJSON( pwd + builder.projectConfig ) );
-}
-
-// load libs config
-if ( grunt.file.exists( pwd + builder.libConfig ) ) {
-
-	grunt.file.recurse( pwd + builder.libConfig, function(abspath, rootdir, subdir, filename){
-
-		if ( project.libs[subdir] === undefined ) {
-			project.libs[subdir] = {};
-		}
-
-		project.libs[subdir][filename.replace(/\.json$/,'')] = grunt.file.readJSON( abspath );
-		
-	});
-
-}
-
-// load jshint config
-if ( grunt.file.exists( pwd + builder.jshintConfig ) ) {
-	var jshintConfig = grunt.file.readJSON( pwd + builder.jshintConfig );
-}
-
-// load pkg data
-if ( grunt.file.exists( pwd + builder.jsPath + builder.jsDir.pkg ) ) {
-	grunt.file.recurse( pwd + builder.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
-		pkg[filename.replace(/\.js$/,'')] = project.rootPath + builder.jsPath + builder.jsDir.pkg + '/' + filename;
-	});
-}
-
-// ==================================================
-// biz config
-// ==================================================
-var bizDefaultConfig = {
-
-	// page id
-	pageId : '',
-
-	// extend page id
-	extendPage : '',
-
-	// js files path 
-	path : '',
-
-	// page note
-	note : '',
-
-	// rely libs
-	libs : []
-
-};
-
-// ==================================================
-// bowerrc config
-// ==================================================
-var bowerrc = {
-	directory : null
-};
-
-// ==================================================
-// cache
-// ==================================================
-var cache = {
-
-	bizConfig : {},
-
-	libConfig : {},
-
-	parentPageId : {},
-
-	libChild : {}
-
-};
-
 // ==================================================
 // helper
 // ==================================================
@@ -192,7 +112,7 @@ var helper = {
 		
 		console.log( chalk.red('bakari ') + chalk.green(status.toLocaleUpperCase()+' ') + (msg || '') );
 
-		if ( status.toLowerCase() === 'error' ) {
+		if ( status.toLowerCase() === 'error' && typeof commandDone === 'function' ) {
 			commandDone();
 		}
 
@@ -533,13 +453,132 @@ var helper = {
 
 };
 
+
+// ==================================================
+// loading data
+// ==================================================
+// load project config
+var pwd = shell.pwd(),
+	pkg = {};
+if ( grunt.file.exists( pwd + builder.projectConfig ) ){
+	project = extend( true, project, grunt.file.readJSON( pwd + builder.projectConfig ) );
+}
+
+// load libs config
+if ( grunt.file.exists( pwd + builder.libConfig ) ) {
+
+	grunt.file.recurse( pwd + builder.libConfig, function(abspath, rootdir, subdir, filename){
+
+		if ( project.libs[subdir] === undefined ) {
+			project.libs[subdir] = {};
+		}
+
+		project.libs[subdir][filename.replace(/\.json$/,'')] = grunt.file.readJSON( abspath );
+		
+	});
+
+}
+
+// load jshint config
+var jshintConfig = {};
+if ( grunt.file.exists( pwd + builder.jshintConfig ) ) {
+	try{
+		jshintConfig = grunt.file.readJSON( pwd + builder.jshintConfig );
+	}catch(e){
+		helper.log('warning', e.message);
+	}
+}
+
+// load uglify config
+var uglifyConfig = {};
+if ( grunt.file.exists( pwd + builder.uglifyConfig ) ) {
+	try{
+		uglifyConfig = grunt.file.readJSON( pwd + builder.uglifyConfig ); 
+	}catch(e){
+		helper.log('warning', e.message);
+	}
+}
+
+// load pkg data
+if ( grunt.file.exists( pwd + builder.jsPath + builder.jsDir.pkg ) ) {
+	grunt.file.recurse( pwd + builder.jsPath + builder.jsDir.pkg , function(abspath, rootdir, subdir, filename){
+		pkg[filename.replace(/\.js$/,'')] = project.rootPath + builder.jsPath + builder.jsDir.pkg + '/' + filename;
+	});
+}
+
+// ==================================================
+// biz config
+// ==================================================
+var bizDefaultConfig = {
+
+	// page id
+	pageId : '',
+
+	// extend page id
+	extendPage : '',
+
+	// js files path 
+	path : '',
+
+	// page note
+	note : '',
+
+	// rely libs
+	libs : []
+
+};
+
+// ==================================================
+// bowerrc config
+// ==================================================
+var bowerrc = {
+	directory : null
+};
+
+// ==================================================
+// cache
+// ==================================================
+var cache = {
+
+	bizConfig : {},
+
+	libConfig : {},
+
+	parentPageId : {},
+
+	libChild : {}
+
+};
+
 // ==================================================
 // lib function
 // ==================================================
 var lib = {
 
-	// search lib information by name
-	search : function( libs ){
+	// search lib
+	search : function( key ){
+
+		needLibs('bower', 'bower');
+
+		var promise = Promise();
+		helper.log('search', key);
+
+		bower.commands
+		.search(key)
+		.on('end', function(results){
+			promise.resolve( results );
+		})
+		.on('error', function(){
+			helper.log('error', 'search lib fail');
+			promise.reject();
+		})
+
+		return promise;
+		
+	},
+
+	// get lib information by name
+	info : function( libs ){
 
 		needLibs('bower', 'bower');
 		
@@ -548,8 +587,6 @@ var lib = {
 			num = libs.length;
 
 		_.each( libs, function(v,k){
-			
-			helper.log('search', v);
 
 			// if v is url or local path
 			if ( v.search('/') !== -1 ) {
@@ -561,33 +598,46 @@ var lib = {
 				}
 				promise.resolve( info );
 				return;
+
 			}
 
-			bower.commands
-			.info(v)
-			.on('end', function (results) {
+			lib.search(v)
+			.done(function( results ){
+				
+				if ( results.length > 0 ) {
 
-				var pkg = results.name,
-					version = results.versions[0]; //取最新版本
+					helper.log('get', v);
+					bower.commands
+					.info(v)
+					.on('end', function (results) {
 
-				info[pkg] = {};
-				info[pkg][version] = {
-					dir : pkg + '-' + version,
-					version : version,
-					pkg : pkg
-				};
+						var pkg = results.name,
+							version = results.versions[0]; //取最新版本
 
-				if ( !--num ) {
-					promise.resolve( info );
-				}
+						info[pkg] = {};
+						info[pkg][version] = {
+							dir : pkg + '-' + version,
+							version : version,
+							pkg : pkg
+						};
 
-			})
-			.on('error', function(){
+						if ( !--num ) {
+							promise.resolve( info );
+						}
 
-				helper.log('error', v + ' : ' + error.details);
+					})
+					.on('error', function(){
 
-				if ( !--num ) {
-					promise.resolve();
+						helper.log('error', v + ' : ' + error.details);
+
+						if ( !--num ) {
+							promise.resolve();
+						}
+
+					});
+
+				} else {
+					promise.reject();
 				}
 
 			});
@@ -938,7 +988,7 @@ gulp.task('uglify', function(){
 	
 	gulp.src(taskConfig.uglify.src)
 		.pipe(concat(taskConfig.uglify.file))
-		.pipe(uglify())
+		.pipe(uglify(uglifyConfig))
 		.pipe(gulp.dest(taskConfig.uglify.dest));
 
 });
@@ -1149,7 +1199,7 @@ cli.init = function(){
 			resetBowerConfig();
 
 			lib
-			.search( answers.libs )
+			.info( answers.libs )
 			.done(function(data){
 				lib
 				.install(data)
@@ -1259,7 +1309,7 @@ cli.addlib = function(name){
 	} else {
 
 		lib
-		.search([name])
+		.info([name])
 		.done(function(data){
 			lib
 			.install(data)
@@ -1399,6 +1449,37 @@ program
 	.command('liblist')
 	.description('lib info')
 	.action(cli.liblist);
+
+// searchlib @early
+cli.searchlib = function( key ){
+	
+	if ( typeof key !== 'string' ) {
+		helper.log('error', 'you must input a keyword');
+		return;
+	}
+
+	lib.search(key)
+	.done(function( results ){
+
+		if ( results.length > 0 ) {
+
+			helper.log(results.length+' results :');
+			_.each( results, function(v){
+				console.log( v.name + ' : ' + v.url );
+			});
+
+		} else {
+			helper.log('no results');
+		}
+
+	});
+
+};
+program
+	.command('searchlib')
+	.description('search lib')
+	.action(cli.searchlib);
+	
 
 // addbiz @early
 cli.addbiz = function( page ){
@@ -1620,7 +1701,7 @@ cli.setbiz = function( pageid ){
 		if ( answers.extendPage === 'false' ) {
 			answers.extendPage = false;
 		}
-		
+
 		// check extend page
 		if ( answers.extendPage !== false && !helper.hasPageid( answers.extendPage ) ) {
 			helper.log('error', 'parent page : '+answers.extendPage+' is not found');
@@ -2159,7 +2240,7 @@ program.option('-c, --complete-build', 'development env complete build files, th
 // ==================================================
 // program
 // ==================================================
-program.version('0.0.6');
+program.version('0.0.7');
 program.command('*').description('').action(commandDone);
 program.parse(process.argv);
 
