@@ -197,7 +197,6 @@ global.write = function(){
 	grunt.file.write.apply(this, arguments);
 };
 global.recurse = function(src, callback){
-	
 	grunt.file.recurse(src, function(abspath, rootdir, subdir, filename){
 		if ( !junk.is(filename) ){
 			callback.apply(this, arguments);
