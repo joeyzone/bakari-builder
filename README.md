@@ -66,4 +66,5 @@ bakari-builder
 
 ##Code Build
 `build <path>` : 构建css,js文件。
+
 `timestamp <path>` or short it `ts <path>`: 修改时间戳。（只针对husor项目的文件结构）。
