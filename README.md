@@ -16,16 +16,16 @@ bakari-builder
 	$ bakari init
 	
 	# 为项目添加一个库
-	$ bakari addlib jquery
+	$ bakari add lib jquery
 	
 	# 添加一个指定版本的库
-	$ bakari addlib jquery -v 1.10.0
+	$ bakari add lib jquery -v 1.10.0
 	
 	# 查看当前项目中包含的库
-	$ bakari liblist
+	$ bakari lib list
 
 	# 添加一个业务
-	$ bakari addbiz commit/add
+	$ bakari add biz commit/add
 	
 ## Flags
 - `-h` or `-help` 查看帮助
@@ -41,29 +41,29 @@ bakari-builder
 
 ##Lib Commands
 
-`addlib <lib>` : 添加一个库到项目中。
+`add lib <lib>` : 添加一个库到项目中。
 
-`rmlib <lib>` : 从项目中移除一个库。
+`rm lib <lib>` : 从项目中移除一个库。
 
-`liblist` : 查看项目中包含的库。
+`lib list` : 查看项目中包含的库。
 
-`cleanlib` : 清理项目中的库，根据项目配置文件，清除多余的库，同时补全缺失的库。
+`clean lib` : 清理项目中的库，根据项目配置文件，清除多余的库，同时补全缺失的库。
 
 
 ##Biz Commands
 
-`addbiz <path>` : 添加一个业务到项目中，通过业务的路径bakari将自动生成pageId及继承关系。
+`add biz <path>` : 添加一个业务到项目中，通过业务的路径bakari将自动生成pageId及继承关系。
 
-`rmbiz <pageid>` : 根据`page id`移除一个业务，移除前需要先移除所有子业务。
+`rm biz <pageid>` : 根据`page id`移除一个业务，移除前需要先移除所有子业务。
 
-`bizlist` : 查看所有的业务。
+`biz list` : 查看所有的业务。
 
-`seebiz <pageid>` : 查看某个业务详情。
+`see biz <pageid>` : 查看某个业务详情。
 
-`cleanbiz` : 清理项目中的业务，根据项目业务配置，清除多余的业务js文件，同时补全缺失的js文件。
+`clean biz` : 清理项目中的业务，根据项目业务配置，清除多余的业务js文件，同时补全缺失的js文件。
 
-`setbiz <pageid>` : 设置一个业务配置，修改业务的`page id`或`extend page id`，builder将自动修改文件名及文件中的继承关系。
+`set biz <pageid>` : 设置一个业务配置，修改业务的`page id`或`extend page id`，builder将自动修改文件名及文件中的继承关系。
 
 ##Code Build
-
-under development
+`build <path>` : 构建css,js文件。
+`timestamp <path>` or short it `ts <path>`: 修改时间戳。（只针对husor项目的文件结构）。
